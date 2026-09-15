@@ -47,8 +47,28 @@ class RegistroDispositivos(Protocol):
         inactivos/abandonados; no bloquea ni valida nada)."""
         ...
 
+    def existe(self, device_id: str) -> bool:
+        """True si el device_id tiene un registro (revocado o no).
+
+        Distinto de ``esta_revocado``: un device_token puede traer firma
+        HMAC genuina (fue emitido por este backend en algún momento) sin
+        que su fila siga en el registro — p. ej. un cliente con el token
+        cacheado apuntando a una base de datos de dispositivos distinta o
+        restaurada. Eso es un token huérfano, no una revocación deliberada;
+        el llamador (ver ``verificar_dispositivo`` en ``http_api.py``) debe
+        poder tratarlo distinto (401, autocorregible re-registrando) de un
+        dispositivo que sí existe y fue revocado a propósito (403, no debe
+        autocorregirse nunca).
+        """
+        ...
+
     def esta_revocado(self, device_id: str) -> bool:
-        """True si el dispositivo fue revocado (ver ``revocar``) o no existe."""
+        """True si el dispositivo fue revocado (ver ``revocar``).
+
+        Para un device_id que no existe en absoluto, el valor de retorno
+        no está definido por este método — usa ``existe`` primero (ver su
+        docstring) para distinguir "no existe" de "revocado a propósito".
+        """
         ...
 
     def revocar(self, device_id: str) -> None:
@@ -99,6 +119,10 @@ class RegistroDispositivosMemory:
             registro = self._dispositivos.get(device_id)
             if registro is not None:
                 registro["ultimo_uso"] = datetime.now()
+
+    def existe(self, device_id: str) -> bool:
+        with self._lock:
+            return device_id in self._dispositivos
 
     def esta_revocado(self, device_id: str) -> bool:
         with self._lock:
@@ -192,6 +216,11 @@ class RegistroDispositivosSQLite:
                 "UPDATE dispositivos SET ultimo_uso = ? WHERE device_id = ?",
                 (datetime.now().isoformat(), device_id),
             )
+
+    def existe(self, device_id: str) -> bool:
+        with self._conexion() as conn:
+            cursor = conn.execute("SELECT 1 FROM dispositivos WHERE device_id = ?", (device_id,))
+            return cursor.fetchone() is not None
 
     def esta_revocado(self, device_id: str) -> bool:
         with self._conexion() as conn:

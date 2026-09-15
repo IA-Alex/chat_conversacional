@@ -32,7 +32,6 @@ from ..domain import (
     extraer_resumen_persistente,
     validar_o_usar_fallback,
 )
-from ..domain.crisis import generar_respuesta_crisis
 from ..domain.validators import validar_clasificacion_intencion
 
 logger = logging.getLogger(__name__)
@@ -42,17 +41,11 @@ logger = logging.getLogger(__name__)
 _METODOS_RESPUESTA_FINAL = (
     "entregar_respuesta_corta",
     "entregar_respuesta_principal",
-    "responder_crisis_desesperacion",
 )
 # Métodos cuyo output es el resumen de memoria persistente actualizado.
 _METODOS_RESUMEN = ("persistir_resumen", "actualizar_memoria")
 # Método cuyo output es la clasificación cruda de intención/emoción.
 _METODO_CLASIFICACION = "detectar_intencion"
-# Método marcador de la rama de crisis emocional grave (desesperación).
-# Su output declarado en flow.json es solo un marcador de que esta rama fue
-# tomada por el router; NUNCA es la respuesta real (ver nota_implementacion
-# en flow.json y _es_resultado_crisis más abajo).
-_METODO_CRISIS = "responder_crisis_desesperacion"
 
 
 class CrewAILaSantisimaAdapter(ServicioLaSantisima):
@@ -190,18 +183,9 @@ class CrewAILaSantisimaAdapter(ServicioLaSantisima):
             # Ejecutar el flow y obtener el resultado.
             resultado = self.flow.kickoff(inputs=inputs)
 
-            if self._es_resultado_crisis(resultado):
-                # La rama 'responder_crisis_desesperacion' de flow.json es
-                # solo un marcador (ver nota_implementacion ahí): la
-                # respuesta real de crisis se genera aquí en Python, igual
-                # que en LangChainAdapter, en vez de usar el output literal
-                # de ese nodo declarativo.
-                respuesta_final = generar_respuesta_crisis(mensaje)
-                emocion = "desesperacion"
-            else:
-                respuesta_final = self._extraer_respuesta_del_flow(resultado)
-                clasificacion = self._extraer_clasificacion_del_flow(resultado)
-                emocion = clasificacion.get("emoción") if clasificacion else None
+            respuesta_final = self._extraer_respuesta_del_flow(resultado)
+            clasificacion = self._extraer_clasificacion_del_flow(resultado)
+            emocion = clasificacion.get("emoción") if clasificacion else None
             self._propagar_resumen_actualizado(resultado, on_resumen_actualizado)
             self._validar_clasificacion_del_flow(resultado)
 
@@ -238,15 +222,6 @@ class CrewAILaSantisimaAdapter(ServicioLaSantisima):
         ya_emitio_algo = False
         try:
             for chunk in self.flow.kickoff_stream(inputs=inputs):
-                if self._es_resultado_crisis(self.flow):
-                    # El nodo de crisis es un marcador declarativo (ver
-                    # flow.json); su contenido nunca debe llegar al
-                    # creyente ni streamearse. En cuanto el estado del flow
-                    # confirma que esta rama se tomó, se descarta cualquier
-                    # chunk de esa rama y se entrega directamente la
-                    # respuesta real generada por generar_respuesta_crisis().
-                    yield generar_respuesta_crisis(mensaje)
-                    return "desesperacion"
                 ya_emitio_algo = True
                 yield cast(str, chunk)
 
@@ -268,26 +243,6 @@ class CrewAILaSantisimaAdapter(ServicioLaSantisima):
             for char in fallback_texto:
                 yield char
             return None
-
-    def _es_resultado_crisis(self, flow_result: object) -> bool:
-        """Detecta si la rama de crisis (`responder_crisis_desesperacion`) se ejecutó.
-
-        flow.json no puede invocar `generar_respuesta_crisis()` directamente
-        (ver nota_implementacion en ese archivo): el nodo declarativo solo
-        sirve de marcador de que el router tomó esa rama. Este método mira
-        los outputs (kickoff, resultado dict) o el estado acumulado del
-        propio objeto Flow (kickoff_stream, mismo patrón defensivo que
-        `_extraer_resumen_del_flow`) para decidir si ese marcador está
-        presente, sin importar el contenido literal que traiga.
-        """
-        outputs = None
-        if isinstance(flow_result, dict):
-            outputs = flow_result.get("outputs") if "outputs" in flow_result else flow_result
-        else:
-            state = getattr(flow_result, "state", None)
-            if isinstance(state, dict):
-                outputs = state.get("outputs", state)
-        return isinstance(outputs, dict) and _METODO_CRISIS in outputs
 
     def _extraer_respuesta_del_flow(self, flow_result: object) -> str:
         """Extrae la respuesta final del resultado del flow.

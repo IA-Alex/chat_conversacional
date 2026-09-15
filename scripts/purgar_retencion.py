@@ -26,6 +26,9 @@ from la_santisima_conversacional.config import get_settings  # noqa: E402
 from la_santisima_conversacional.infrastructure.logging_config import (  # noqa: E402
     configurar_logging,
 )
+from la_santisima_conversacional.infrastructure.purga_estado import (  # noqa: E402
+    registrar_resultado,
+)
 from la_santisima_conversacional.infrastructure.repositories import (  # noqa: E402
     SQLiteConversationRepository,
 )
@@ -35,16 +38,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dias", type=int, default=None, help="Sobrescribe SANTISIMA_RETENCION_DIAS.")
     parser.add_argument("--db-path", default=None, help="Sobrescribe SANTISIMA_SQLITE_DB_PATH.")
+    parser.add_argument(
+        "--estado-path", default=None, help="Sobrescribe SANTISIMA_PURGA_ESTADO_PATH."
+    )
     args = parser.parse_args()
 
     configurar_logging("INFO")
     settings = get_settings()
+    ruta_estado = Path(args.estado_path or settings.purga_estado_path)
     repo = SQLiteConversationRepository(
         db_path=args.db_path or settings.sqlite_db_path,
         clave_cifrado=settings.clave_cifrado,
         retencion_dias=args.dias or settings.retencion_dias,
     )
-    borradas = repo.purgar_expirados()
+    try:
+        borradas = repo.purgar_expirados()
+    except Exception:
+        registrar_resultado(ruta_estado, registros_borrados=0, exitosa=False)
+        raise
+    registrar_resultado(ruta_estado, registros_borrados=borradas, exitosa=True)
     print(f"Purgadas {borradas} filas.")
     return 0
 

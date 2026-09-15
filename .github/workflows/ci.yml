@@ -12,9 +12,37 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Matriz reducida a los extremos soportados (min/max de
+    # requires-python en pyproject.toml, ">=3.10,<3.14") en vez de las
+    # 3.10/3.11/3.12 originales: con el servicio de Postgres y la
+    # instalación de redis-server sumadas a cada corrida, mantener una
+    # franja media (3.11) que no agrega cobertura real por encima de los
+    # dos extremos ya cubiertos no vale casi 1.5x el tiempo total de CI.
+    # Mantiene el target ~5 min.
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: la_santisima_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Consumido por tests/infrastructure/test_repository_postgres.py.
+      # PostgresConversationRepository crea su propio esquema (tabla
+      # `messages`, CREATE TABLE IF NOT EXISTS) en __init__, así que el
+      # servicio de Postgres solo necesita la base de datos vacía
+      # (POSTGRES_DB de arriba) — no hace falta un paso de
+      # migración/schema previo.
+      TEST_POSTGRES_DSN: postgresql://postgres:postgres@127.0.0.1:5432/la_santisima_test
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +51,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Instalar redis-server (para tests/infrastructure/test_rate_limit_redis.py)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+        # El test no usa un servicio de GitHub Actions: levanta su propio
+        # redis-server efímero vía subprocess (ver el módulo de test),
+        # solo necesita el binario disponible en PATH.
+
       - name: Instalar dependencias de test
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          pip install -e ".[test,postgres,redis]"
 
       - name: Ejecutar pytest con cobertura
         run: pytest

@@ -208,6 +208,20 @@
     --space-5: 32px;
     --space-6: 40px;
     --space-7: 64px;
+
+    /* Namespace --cal-* (docs/ux-criterios-evaluacion.md SU-J2/SU-J5/SU-T2/SU-A4/UX-D1).
+       Alcance de esta pasada: solo los puntos marcados en la auditoría (A1
+       contraste de .msg-time, A3 medida de lectura, M6 escala tipográfica,
+       B2 ritmo vertical). El resto de hex/rgba del archivo — fondo, niebla,
+       imagen, y el bloque #consent-overlay marcado como "diseño literal
+       entregado" — queda fuera de este cambio a propósito: tokenizarlo es
+       un rediseño aparte, no parte de estos 4 hallazgos. */
+    --cal-text-meta: #857e75;   /* 4.92:1 sobre #0b0a10, sin opacity */
+    --cal-measure: 62ch;
+    --cal-text-deity-size: 19px;
+    --cal-text-user-size: 16px;
+    --cal-text-meta-size: 10px;
+    --cal-rhythm-message: 34px;
   }
   html, body { margin: 0; padding: 0; background: #0b0a10; }
   * { box-sizing: border-box; }
@@ -249,28 +263,33 @@
     .msg-deity, .msg-user-row { animation: none; }
   }
 
-  #messages { flex: 1; overflow-y: auto; padding: var(--space-7) var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); position: relative; z-index: 1; }
+  #messages { flex: 1; overflow-y: auto; padding: var(--space-7) var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--cal-rhythm-message); position: relative; z-index: 1; }
 
-  .msg-deity { display: flex; flex-direction: column; align-items: flex-start; max-width: 94%; animation: messageIn 0.32s ease-out; }
-  .msg-deity .text { font-family: 'Crimson Pro', serif; font-weight: 500; font-size: 17px; line-height: 1.55; color: #d3c8b6; text-align: left; }
-  .msg-time { font-family: 'Work Sans', sans-serif; font-size: 10px; opacity: 0.4; margin-top: var(--space-2); letter-spacing: 0.04em; }
-  .msg-time.deity { color: #e8dcc8; }
-  .msg-time.user { color: #d4d4d8; }
+  .msg-deity { display: flex; flex-direction: column; align-items: flex-start; max-width: min(94%, var(--cal-measure)); animation: messageIn 0.32s ease-out; }
+  .msg-deity .text { font-family: 'Crimson Pro', serif; font-weight: 500; font-size: var(--cal-text-deity-size); line-height: 1.55; color: #d3c8b6; text-align: left; }
+  .msg-time { font-family: 'Work Sans', sans-serif; font-size: var(--cal-text-meta-size); color: var(--cal-text-meta); margin-top: var(--space-2); letter-spacing: 0.04em; }
 
   .msg-user-row { display: flex; justify-content: flex-end; animation: messageIn 0.32s ease-out; }
-  .msg-user-inner { display: flex; align-items: stretch; gap: var(--space-3); max-width: 90%; }
+  .msg-user-inner { display: flex; align-items: stretch; gap: var(--space-3); max-width: min(90%, var(--cal-measure)); }
   .msg-user-line { width: 1px; background: rgba(184,150,95,0.55); flex-shrink: 0; }
   .msg-user-col { display: flex; flex-direction: column; align-items: flex-end; }
-  .msg-user-col .text { font-family: 'Work Sans', sans-serif; font-weight: 400; font-size: 14px; line-height: 1.5; color: #c1c1c5; text-align: right; }
+  .msg-user-col .text { font-family: 'Work Sans', sans-serif; font-weight: 400; font-size: var(--cal-text-user-size); line-height: 1.5; color: #c1c1c5; text-align: right; }
 
   #input-row { position: relative; z-index: 1; display: flex; align-items: center; gap: 16px;
     padding: 20px 56px 40px; border-top: 1px solid rgba(184,150,95,0.3); }
   #chat-input { flex: 1; background: transparent; border: none; outline: none;
     font-family: 'Crimson Pro', serif; font-style: italic; font-size: 16px; color: #e8dcc8; padding: 8px 0; }
   #chat-input::placeholder { color: rgba(232,220,200,0.52); }
-  #send-btn { background: none; border: none; padding: 11px; min-width: 44px; min-height: 44px; cursor: pointer; color: rgba(184,150,95,0.85);
+  #send-btn, #stop-btn { background: none; border: none; padding: 11px; min-width: 44px; min-height: 44px; cursor: pointer; color: rgba(184,150,95,0.85);
     display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  #send-btn:hover { color: rgba(184,150,95,1); }
+  #send-btn:hover, #stop-btn:hover { color: rgba(184,150,95,1); }
+  #stop-btn[hidden] { display: none; }
+
+  #reset-btn { position: absolute; top: 14px; right: 14px; z-index: 2; background: none; border: none;
+    padding: 9px; min-width: 40px; min-height: 40px; cursor: pointer; color: rgba(184,150,95,0.55);
+    display: flex; align-items: center; justify-content: center; }
+  #reset-btn:hover { color: rgba(184,150,95,1); }
+  #reset-btn:disabled { opacity: 0.35; cursor: default; }
 
   @media (max-width: 767px) {
     #root { flex-direction: column; }
@@ -410,6 +429,13 @@
     <div class="fog" id="fog-4" style="bottom:10%; left:6%; width:180px; height:180px; animation:fogDriftB 10s ease-in-out infinite;"></div>
     <div class="fog" id="fog-5" style="top:6%; right:8%; width:200px; height:200px; animation:fogDriftA 12s ease-in-out infinite;"></div>
 
+    <button id="reset-btn" aria-label="Reiniciar conversación" title="Reiniciar conversación" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path d="M3 12a9 9 0 1 1 3 6.7" stroke-linecap="round"></path>
+        <path d="M3 16v-4h4" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </button>
+
     <div id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
 
     <div id="boot-error-banner" class="inline-error" hidden></div>
@@ -417,6 +443,11 @@
     <div id="input-row">
       <span id="waiting-indicator" hidden aria-hidden="true"></span>
       <input type="text" id="chat-input" placeholder="Cuéntame a qué has venido..." disabled>
+      <button id="stop-btn" aria-label="Detener" hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
+          <rect x="5" y="5" width="14" height="14"></rect>
+        </svg>
+      </button>
       <button id="send-btn" aria-label="Enviar" disabled>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
           <line x1="12" y1="2" x2="12" y2="6"></line>
@@ -448,7 +479,11 @@
       <div class="sensitive-info visible">
         <strong>Tu información es privada.</strong> El modelo responde ajustándose a ti. Siéntete seguro.
       </div>
+
+      <div class="legend visible" id="consent-resumen"></div>
     </div>
+
+    <p class="threshold-error" id="consent-error" hidden></p>
 
     <div style="margin-top: 20px;">
       <button type="button" class="btn-accept" id="consent-accept-btn">
@@ -509,6 +544,9 @@
 
   var LS_DEVICE_TOKEN_KEY = 'santisima_device_token';
   var LS_CONSENT_VERSION_KEY = 'santisima_consent_version';
+  // Debe coincidir con el literal emitido en crewai_adapter.py y
+  // langchain_adapter.py cuando el streaming se corta a mitad de camino.
+  var MARCADOR_INTERRUPCION = '[La conexión se interrumpió. Por favor, intenta de nuevo.]';
 
   var fogEls = document.querySelectorAll('.fog');
   var intensifyTimer = null;
@@ -650,12 +688,16 @@
 
   var input = document.getElementById('chat-input');
   var sendBtn = document.getElementById('send-btn');
+  var stopBtn = document.getElementById('stop-btn');
+  var resetBtn = document.getElementById('reset-btn');
   var messagesEl = document.getElementById('messages');
   var bootErrorBanner = document.getElementById('boot-error-banner');
   var waitingIndicator = document.getElementById('waiting-indicator');
 
   var consentOverlay = document.getElementById('consent-overlay');
   var consentAcceptBtn = document.getElementById('consent-accept-btn');
+  var consentResumenEl = document.getElementById('consent-resumen');
+  var consentErrorEl = document.getElementById('consent-error');
 
   var bootErrorOverlay = document.getElementById('boot-error-overlay');
   var bootErrorMessage = document.getElementById('boot-error-message');
@@ -715,10 +757,14 @@
   // ─────────────────────────────────────────────────────────────────────
   function mostrarPantallaConsentimiento(privacidad) {
     return new Promise(function (resolve) {
+      consentResumenEl.textContent = privacidad.resumen || '';
       consentOverlay.hidden = false;
 
       consentAcceptBtn.onclick = function () {
         consentAcceptBtn.disabled = true;
+        consentErrorEl.hidden = true;
+        var textoOriginal = consentAcceptBtn.textContent;
+        consentAcceptBtn.textContent = 'Registrando…';
         apiRequest('POST', '/api/v1/dispositivos/consentimiento', { version: privacidad.version }, true)
           .then(function () {
             try { localStorage.setItem(LS_CONSENT_VERSION_KEY, privacidad.version); } catch (e) { }
@@ -727,7 +773,10 @@
           })
           .catch(function (err) {
             console.error('No se pudo registrar el consentimiento:', err);
+            consentAcceptBtn.textContent = textoOriginal;
             consentAcceptBtn.disabled = false;
+            consentErrorEl.textContent = 'No se pudo registrar tu consentimiento. Verifica tu conexión e inténtalo de nuevo.';
+            consentErrorEl.hidden = false;
           });
       };
     });
@@ -830,6 +879,7 @@
         crearMensajeWelcome();
         input.disabled = false;
         sendBtn.disabled = false;
+        resetBtn.disabled = false;
       })
       .catch(function (err) {
         if (err !== 'boot_detenido') {
@@ -953,7 +1003,18 @@
     }, config.duracion);
   }
 
-  function streamRespuesta(mensaje) {
+  // Cada llamada a enviarMensaje() abre un turno propio. Si el usuario
+  // detiene o dispara otro envío, turnoActual avanza y cualquier chunk que
+  // llegue tarde de un turno viejo (ya sea por reconexión de sesión o por un
+  // stream que sigue vivo tras abortar) se descarta en vez de escribirse en
+  // una burbuja que ya no corresponde a la conversación actual.
+  var turnoActual = 0;
+  var controladorActual = null;
+  var mensajeTurnoActual = null;
+  var deityElActivo = null;
+  var reconciliando = false;
+
+  function streamRespuesta(mensaje, miTurno, signal) {
     // Entrada al estado 'esperando' — desde el envío hasta el primer chunk.
     transicionarEstadoNiebla('esperando');
     var waitingTimer = setTimeout(function () { waitingIndicator.hidden = false; }, 3500);
@@ -969,7 +1030,8 @@
     return fetch(API_BASE + '/api/v1/mensajes/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + deviceToken },
-      body: JSON.stringify({ mensaje: mensaje, session_id: sessionId })
+      body: JSON.stringify({ mensaje: mensaje, session_id: sessionId }),
+      signal: signal
     }).then(function (resp) {
       if (!resp.ok) {
         limpiarEspera();
@@ -982,7 +1044,12 @@
       var buffer = '';
 
       function leer() {
+        if (miTurno !== turnoActual) {
+          limpiarEspera();
+          return reader.cancel().catch(function () { });
+        }
         return reader.read().then(function (res) {
+          if (miTurno !== turnoActual) { limpiarEspera(); return; }
           if (res.done) { limpiarEspera(); return; }
           buffer += decoder.decode(res.value, { stream: true });
           var bloques = buffer.split('\n\n');
@@ -1018,27 +1085,44 @@
             }
             var chunk = dataLineas.join('\n');
             if (!chunk) continue;
-            if (primerChunk) {
-              limpiarEspera();
-              transicionarEstadoNiebla('respondiendo');
-              deityEl = crearMensajeDeidadVacio();
-              textEl = deityEl.querySelector('.text');
-              deityEl.querySelector('.msg-time').textContent = horaActual();
-              primerChunk = false;
-            } else {
-              // No en el primer chunk: la transición de entrada a
-              // 'respondiendo' (0.35s subiendo a scale 1.35) ya está
-              // corriendo, y un pulso justo encima se vería como un salto.
-              pulsoFog();
+            // El motor puede cortar la generación e insertar este marcador
+            // literal en pleno chunk (crewai_adapter.py / langchain_adapter.py):
+            // es un aviso de infraestructura, no algo que "dijo" la deidad, así
+            // que se separa del texto visible y se muestra como error de UI.
+            var idxMarcador = chunk.indexOf(MARCADOR_INTERRUPCION);
+            var textoVisible = idxMarcador === -1 ? chunk : chunk.slice(0, idxMarcador);
+            if (textoVisible) {
+              if (primerChunk) {
+                limpiarEspera();
+                transicionarEstadoNiebla('respondiendo');
+                deityEl = crearMensajeDeidadVacio();
+                textEl = deityEl.querySelector('.text');
+                deityEl.querySelector('.msg-time').textContent = horaActual();
+                primerChunk = false;
+                deityElActivo = deityEl;
+              } else {
+                // No en el primer chunk: la transición de entrada a
+                // 'respondiendo' (0.35s subiendo a scale 1.35) ya está
+                // corriendo, y un pulso justo encima se vería como un salto.
+                pulsoFog();
+              }
+              textEl.textContent += textoVisible;
+              scrollAlFinal();
             }
-            textEl.textContent += chunk;
-            scrollAlFinal();
+            if (idxMarcador !== -1) {
+              mostrarErrorInline('La respuesta se interrumpió a mitad de camino. Puedes intentar de nuevo.');
+            }
           }
           return leer();
         });
       }
       return leer();
     }).catch(function (err) {
+      // reader.read() puede rechazar (conexión cortada a mitad de lectura)
+      // sin pasar por ninguno de los limpiarEspera() de arriba: sin esto,
+      // waitingTimer sigue vivo y el indicador "escribiendo…" aparece
+      // después de que la petición ya murió.
+      limpiarEspera();
       // Si el fallo ocurrió en 'esperando' (antes del primer chunk) hay
       // que revertir el drift acelerado; si ocurrió en 'respondiendo'
       // (stream cortado a mitad de camino) hay que apagar la intensidad
@@ -1051,33 +1135,136 @@
     });
   }
 
+  // Compartida entre la reconciliación de segundo plano (CV-I3) y el
+  // fallback no-streaming (§1): escribe una respuesta ya completa (no un
+  // stream de chunks) en la burbuja del turno, creándola si el streaming
+  // nunca llegó a abrirla.
+  function escribirRespuestaCompleta(miTurno, respuesta, emocion) {
+    if (miTurno !== turnoActual) return;
+    var deityEl = deityElActivo;
+    if (!deityEl) {
+      deityEl = crearMensajeDeidadVacio();
+      deityEl.querySelector('.msg-time').textContent = horaActual();
+    }
+    deityEl.querySelector('.text').textContent = respuesta;
+    scrollAlFinal();
+    transicionarEstadoNiebla(emocion ? 'resuelto' : 'reposo', emocion);
+  }
+
+  // §1: "camino de degradación si el stream falla: reintento sin
+  // streaming, nunca pantalla en blanco". Solo se usa para fallos
+  // genéricos (red, 5xx, CORS) — 403/429 son respuestas semánticas del
+  // backend que un reintento sin streaming repetiría igual.
+  function degradarSinStreaming(miTurno, texto) {
+    return apiRequest('POST', '/api/v1/mensajes', { mensaje: texto, session_id: sessionId }, true)
+      .then(function (data) {
+        var emocion = data.emocion && data.emocion !== 'ninguna' ? data.emocion : null;
+        escribirRespuestaCompleta(miTurno, data.respuesta, emocion);
+      })
+      .catch(function (err) {
+        console.error('Fallback no-streaming también falló:', err);
+        if (miTurno === turnoActual && (estadoNiebla === 'esperando' || estadoNiebla === 'respondiendo')) {
+          transicionarEstadoNiebla('reposo');
+        }
+        mostrarErrorInline('No se pudo obtener respuesta. Verifica tu conexión.');
+      });
+  }
+
   function enviarMensaje(texto) {
     agregarMensajeUsuario(texto);
     input.disabled = true;
-    sendBtn.disabled = true;
+    sendBtn.hidden = true;
+    stopBtn.hidden = false;
+
+    turnoActual += 1;
+    var miTurno = turnoActual;
+    mensajeTurnoActual = texto;
+    deityElActivo = null;
 
     function intentar(reintentoSesion) {
-      return streamRespuesta(texto).catch(function (err) {
+      controladorActual = new AbortController();
+      return streamRespuesta(texto, miTurno, controladorActual.signal).catch(function (err) {
+        if (err && err.name === 'AbortError') {
+          // Detenido por el usuario: el texto ya recibido se conserva tal
+          // cual quedó en el DOM, sin banner de error ni reintento.
+          return;
+        }
         if (err.status === 404 && !reintentoSesion) {
-          // Sesión inválida: regenerar y reintentar una sola vez.
-          return ensureSession().then(function () { return intentar(true); });
+          // Sesión inválida: regenerar y reintentar una sola vez. Si la
+          // regeneración falla, el rechazo no debe quedar sin manejar (eso
+          // dejaría el input bloqueado en "enviando" para siempre) — se cae
+          // al mismo camino degradado que cualquier otro error de stream.
+          return ensureSession().then(
+            function () { return intentar(true); },
+            function () { return degradarSinStreaming(miTurno, texto); }
+          );
         }
         if (err.status === 403) {
           mostrarErrorInline('Tu consentimiento venció. Recarga la página para continuar.');
-        } else if (err.status === 429) {
-          mostrarErrorInline('Demasiados mensajes. Espera un momento antes de volver a intentar.');
-        } else {
-          mostrarErrorInline('No se pudo obtener respuesta. Verifica tu conexión.');
+          return;
         }
+        if (err.status === 429) {
+          mostrarErrorInline('Demasiados mensajes. Espera un momento antes de volver a intentar.');
+          return;
+        }
+        return degradarSinStreaming(miTurno, texto);
       });
     }
 
     intentar(false).then(function () {
+      controladorActual = null;
+      // Si turnoActual ya avanzó (otro mensaje se envió mientras este
+      // seguía resolviendo), ese turno nuevo es quien manda en la UI.
+      if (miTurno !== turnoActual) return;
+      // reconciliarStreamTruncado() se encarga de reactivar la UI cuando
+      // termine: si lo hiciéramos aquí también, el input quedaría utilizable
+      // un instante mientras la reconciliación todavía está en vuelo.
+      if (reconciliando) return;
       input.disabled = false;
-      sendBtn.disabled = false;
+      sendBtn.hidden = false;
+      stopBtn.hidden = true;
       input.focus();
     });
   }
+
+  // CV-I3: si el navegador pausa o mata la lectura del stream en segundo
+  // plano (pestaña oculta) y el turno seguía activo al volver, no queda
+  // otra que reconciliar con la ruta no-streaming — dejar el mensaje
+  // truncado sin ninguna señal no es una opción.
+  function reconciliarStreamTruncado() {
+    var miTurno = turnoActual;
+    var textoOriginal = mensajeTurnoActual;
+    if (!textoOriginal) return;
+    reconciliando = true;
+    if (controladorActual) controladorActual.abort();
+
+    apiRequest('POST', '/api/v1/mensajes', { mensaje: textoOriginal, session_id: sessionId }, true)
+      .then(function (data) {
+        var emocion = data.emocion && data.emocion !== 'ninguna' ? data.emocion : null;
+        escribirRespuestaCompleta(miTurno, data.respuesta, emocion);
+      })
+      .catch(function (err) {
+        console.error('No se pudo reconciliar tras volver de segundo plano:', err);
+        if (miTurno === turnoActual) {
+          mostrarErrorInline('Se perdió la conexión mientras la app estaba en segundo plano. Intenta enviar tu mensaje de nuevo.');
+        }
+      })
+      .then(function () {
+        reconciliando = false;
+        if (miTurno !== turnoActual) return;
+        input.disabled = false;
+        sendBtn.hidden = false;
+        stopBtn.hidden = true;
+      });
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (reconciliando) return;
+    // stopBtn oculto === 'reposo'/'idle': no hay turno activo que reconciliar.
+    if (stopBtn.hidden) return;
+    reconciliarStreamTruncado();
+  });
 
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !input.disabled && input.value.trim()) {
@@ -1093,6 +1280,43 @@
       input.value = '';
       enviarMensaje(texto);
     }
+  });
+
+  stopBtn.addEventListener('click', function () {
+    if (controladorActual) controladorActual.abort();
+  });
+
+  // CV-C3: reiniciar borra el historial de la sesión — es destructivo e
+  // irreversible, así que exige confirmación explícita antes de llamar al
+  // backend.
+  resetBtn.addEventListener('click', function () {
+    if (resetBtn.disabled || !sessionId) return;
+    var confirmado = window.confirm('¿Reiniciar la conversación? Se perderá el historial actual y no se puede deshacer.');
+    if (!confirmado) return;
+
+    turnoActual += 1;
+    if (controladorActual) controladorActual.abort();
+    input.disabled = true;
+    sendBtn.hidden = false;
+    sendBtn.disabled = true;
+    stopBtn.hidden = true;
+    resetBtn.disabled = true;
+
+    apiRequest('POST', '/api/v1/sesiones/' + encodeURIComponent(sessionId) + '/reiniciar', undefined, true)
+      .then(function () {
+        messagesEl.innerHTML = '';
+        crearMensajeWelcome();
+      })
+      .catch(function (err) {
+        console.error('No se pudo reiniciar la sesión:', err);
+        mostrarErrorInline('No se pudo reiniciar la conversación. Intenta de nuevo.');
+      })
+      .then(function () {
+        resetBtn.disabled = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      });
   });
 
   bootstrap();

@@ -182,6 +182,33 @@ Ver `.env.example` para la lista completa; lo específico de producción:
   para el detalle. Esto cierra el pendiente #2 de
   `docs/compliance/politica-retencion.md` §4: antes el script existía
   pero nada garantizaba que corriera de forma programada.
+
+  **Alternativas al timer** (mismo script, mismo resultado en
+  `purga_estado.json` — lo que se monitorea es el archivo, no el
+  scheduler, así que la alerta `SantisimaPurgaRetencionAtrasada` funciona
+  igual con cualquiera de las tres):
+
+  - **Host sin systemd** (Alpine, contenedor, macOS): cron diario sobre el
+    wrapper `scripts/retencion_cron.sh`, que resuelve el intérprete del
+    venv y deja una marca de tiempo propia en el log (permite distinguir
+    "el cron no disparó" de "disparó y la purga falló").
+
+    ```bash
+    0 3 * * * /ruta/al/repo/scripts/retencion_cron.sh >> /var/log/santisima-purga.log 2>&1
+    ```
+
+  - **Despliegue en contenedor**: `docker-compose.purga.yml`, que monta el
+    repo en una imagen `python:3.12-slim` (no hay Dockerfile propio en este
+    proyecto) y corre el script con `--rm`. Sirve tanto para una corrida
+    puntual como invocado desde el cron del host.
+
+    ```bash
+    docker compose -f docker-compose.purga.yml run --rm purga-retencion
+    ```
+
+  - Cualquiera de las tres opciones puede confirmarse consultando
+    `GET /metrics/health` → `ultima_purga` (ver
+    `docs/runbooks/HEALTH_CHECKS.md`).
 - Backup: si vas a respaldar los `.db`, hazlo cifrado en destino (el
   contenido de `messages` ya viaja cifrado con Fernet si configuraste
   `SANTISIMA_CLAVE_CIFRADO`, pero el backup en sí — snapshot del VPS,

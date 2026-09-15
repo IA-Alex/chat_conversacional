@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     ``cryptography.fernet.Fernet.generate_key()``."""
 
     # --- Identidad de dispositivo (usuarios finales de la app) ---
+    purga_estado_path: str = "purga_estado.json"
+    """Archivo donde ``scripts/purgar_retencion.py`` registra el resultado
+    de su última ejecución (timestamp, filas borradas, éxito), leído por
+    ``GET /metrics/health`` para detectar si la purga dejó de correr."""
+
     dispositivos_db_path: str = "dispositivos.db"
     """SQLite donde se registra qué dispositivos existen y cuáles fueron
     revocados (ver ``infrastructure.dispositivos``). Tabla separada de la
@@ -179,30 +184,31 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validar_debug_en_produccion(self) -> "Settings":
         """Valida que debug no esté activo en producción sin confirmación explícita.
-        
+
         Detecta señales de entorno productivo y falla si debug=true sin
         confirmo_debug_en_prod=true.
         """
         if not self.debug:
             return self
-        
+
         # Señales de entorno productivo
         import os
+
         en_kubernetes = "KUBERNETES_SERVICE_HOST" in os.environ
         entorno_produccion = os.environ.get("SANTISIMA_ENTORNO") == "production"
-        
+
         if (en_kubernetes or entorno_produccion) and not self.confirmo_debug_en_prod:
             señales = []
             if en_kubernetes:
                 señales.append("KUBERNETES_SERVICE_HOST presente")
             if entorno_produccion:
                 señales.append("SANTISIMA_ENTORNO=production")
-            
+
             raise ValueError(
                 f"debug=true detectado en entorno productivo ({', '.join(señales)}). "
                 "Establece SANTISIMA_CONFIRMO_DEBUG_EN_PROD=true si es intencional."
             )
-        
+
         return self
 
     def validar_produccion(self) -> None:

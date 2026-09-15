@@ -312,6 +312,22 @@ class SQLiteConversationRepository:
             logger.info("Retención: %d mensajes purgados (anteriores a %s).", borradas, limite)
         return borradas
 
+    def contar_filas(self) -> int:
+        """Filas totales en ``messages`` — tamaño lógico del historial.
+
+        Mismo propósito que en ``PostgresConversationRepository.contar_filas``
+        (ver su docstring): alimenta ``santisima_db_historial_filas`` para
+        ``GET /metrics/health``. Se implementa también aquí para que ese
+        endpoint devuelva el mismo dato sin importar el backend — un
+        dashboard o runbook que solo funcione en Postgres es un dashboard
+        que no sirve en el despliegue de una sola instancia, que es el
+        default de este proyecto (``Settings.usar_postgres = False``).
+        """
+        with self._conexion() as conn:
+            cursor = conn.execute("SELECT count(*) FROM messages")
+            fila = cursor.fetchone()
+            return int(fila[0]) if fila else 0
+
 
 class PostgresConversationRepository:
     """Repositorio de conversaciones usando PostgreSQL.
@@ -396,9 +412,39 @@ class PostgresConversationRepository:
         ``psycopg.Connection`` sí cierra la conexión al salir del bloque
         ``with`` (hace commit/rollback y luego close) — no hace falta el
         envoltorio adicional que sí hizo falta para sqlite3.
+
+        Instrumentación (ver ``infrastructure.metrics``): se incrementa un
+        gauge mientras la conexión está abierta. Como este repositorio NO
+        usa pool (una conexión por operación, ver el docstring de la
+        clase), ``santisima_db_connections_active`` es exactamente el
+        número de operaciones concurrentes contra Postgres en ese
+        instante — que es el dato que la auditoría pedía como
+        ``db_connection_pool_active_connections`` y el que decide si
+        ``max_connections`` del servidor está en riesgo bajo carga. El
+        decremento va en el ``finally`` para que una excepción dentro del
+        bloque (timeout de conexión, sentencia inválida) no deje el gauge
+        contando una conexión fantasma para siempre.
+
+        ``metrics`` se importa aquí dentro y no al nivel del módulo: este
+        módulo se importa desde ``infrastructure/__init__.py``, que a su
+        vez se importa en tests que recargan ``http_api`` (que ya registra
+        las mismas métricas) y un import a nivel de módulo dispararía
+        ``DuplicateTimeseries`` al re-ejecutarse el registro de
+        ``prometheus_client``. Mismo patrón de import perezoso que usan
+        ``psycopg`` y ``redis`` en este proyecto.
         """
-        with self._psycopg.connect(self.dsn, autocommit=True) as conn:
-            yield conn
+        from . import metrics
+
+        metrics.db_connections_created_total.labels(backend="postgres").inc()
+        metrics.db_connections_active.labels(backend="postgres").inc()
+        try:
+            with self._psycopg.connect(self.dsn, autocommit=True) as conn:
+                yield conn
+        except Exception:
+            metrics.db_errors_total.labels(backend="postgres").inc()
+            raise
+        finally:
+            metrics.db_connections_active.labels(backend="postgres").dec()
 
     def _inicializar_base_datos(self) -> None:
         with self._conexion() as conn:
@@ -428,10 +474,7 @@ class PostgresConversationRepository:
             )
             return [
                 Message(
-                    role=row[0], 
-                    content=self._descifrar(row[1]), 
-                    timestamp=row[2],
-                    modelo=row[3]
+                    role=row[0], content=self._descifrar(row[1]), timestamp=row[2], modelo=row[3]
                 )
                 for row in cursor.fetchall()
             ]
@@ -442,11 +485,11 @@ class PostgresConversationRepository:
                 "INSERT INTO messages (session_id, role, content, timestamp, modelo) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (
-                    session_id, 
-                    message.role, 
-                    self._cifrar(message.content), 
+                    session_id,
+                    message.role,
+                    self._cifrar(message.content),
                     message.timestamp,
-                    message.modelo
+                    message.modelo,
                 ),
             )
 
@@ -507,3 +550,21 @@ class PostgresConversationRepository:
         if borradas:
             logger.info("Retención: %d mensajes purgados (anteriores a %s).", borradas, limite)
         return borradas
+
+    def contar_filas(self) -> int:
+        """Filas totales en ``messages`` — tamaño lógico del historial.
+
+        La auditoría pedía visibilidad de "historial DB size": sin esto, la
+        única forma de saber si la base crece sin control (una purga que
+        nunca corre, un bug de retención) era entrar al servidor y correr
+        ``SELECT count(*)`` a mano. Se expone vía
+        ``santisima_db_historial_filas`` desde ``GET /metrics/health``.
+
+        ``count(*)`` exacto y no una estimación de ``pg_class.reltuples``:
+        a la escala de esta app (retención de 90 días) es una consulta
+        barata, y el valor exacto es el que hace obvio un salto anómalo.
+        """
+        with self._conexion() as conn:
+            cursor = conn.execute("SELECT count(*) FROM messages")
+            fila = cursor.fetchone()
+            return int(fila[0]) if fila else 0

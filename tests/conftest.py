@@ -94,6 +94,14 @@ if not hasattr(sys.modules.get("langchain_openai", _types.ModuleType("dummy")), 
         def stream(self, *args, **kwargs):
             return iter([])
 
+        def bind(self, **kwargs):
+            # Espeja Runnable.bind() de LangChain: fija kwargs adicionales
+            # (p. ej. max_tokens) y devuelve un runnable equivalente. Los
+            # adaptadores lo usan para acotar la longitud de cada tipo de
+            # respuesta (ver LangChainAdapter.__init__); el fake no necesita
+            # aplicar los kwargs de verdad, solo seguir siendo invocable.
+            return self
+
     sys.modules["langchain_openai"].ChatOpenAI = _FakeChatOpenAI
 
     class _FakeChatPromptTemplate:

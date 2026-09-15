@@ -89,19 +89,19 @@ compuestas explícitamente en Python, con enrutado if/else en vez de un
 grafo con estado (LangGraph): para 3 ramas sin ciclos entre turnos no se
 justifica la dependencia adicional.
 
-**Excepción documentada — rama de crisis emocional grave:** la sintaxis
-de `expression` de `flow.json` no puede invocar una función Python (no
-hay API de hook por-nodo ni forma de registrar `generar_respuesta_crisis()`
-como tool/step con la versión de CrewAI usada aquí). Por eso el nodo
-`responder_crisis_desesperacion` de `flow.json` es solo un **marcador**
-de que el router tomó esa rama, y `CrewAILaSantisimaAdapter` (método
-`_es_resultado_crisis`) intercepta el resultado del flow en Python,
-sustituyéndolo por la llamada real a `domain/crisis.py:generar_respuesta_crisis()`
-— igual que hace `LangChainAdapter` de forma nativa. Es la única rama
-donde el flujo declarado en `flow.json` no es la fuente final de verdad
-del contenido; ver `nota_implementacion` en el propio `flow.json` y
-`docs/compliance/gobernanza-ia.md` §4 para el detalle y la limitación
-conocida en el path de streaming.
+**Nota histórica — rama de crisis emocional grave (retirada 2026-09-15):**
+ambos motores tuvieron una rama especial que interceptaba mensajes con
+emoción `"desesperacion"` y devolvía un texto fijo de contención +
+derivación en vez de pasar por el LLM (`domain/crisis.py`, ya eliminado).
+Se retiró por decisión del titular del proyecto: disparaba con angustia
+cotidiana, no solo riesgo vital, y el texto fijo se sentía repetitivo y
+no contextual. Ver `docs/compliance/gobernanza-ia.md` §4 y la entrada
+"Reversión 2026-09-15" en §6 para el detalle completo, incluida la
+condición de revisión pendiente antes de cualquier lanzamiento público.
+`flow.json` ya no tiene ningún nodo cuyo contenido no sea la fuente final
+de verdad de la respuesta: el enrutado if/else de `LangChainAdapter` y el
+flujo declarativo de `CrewAIAdapter` vuelven a tener paridad total sin
+excepciones.
 
 ## Backend HTTP, seguridad y operación
 

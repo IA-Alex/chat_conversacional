@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - prometheus_rules.yml
+
+scrape_configs:
+  - job_name: santisima-backend
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+    metrics_path: /metrics
+
+  # Segundo job contra /metrics/health. NO es redundante: ese endpoint es el
+  # que actualiza los gauges de purga (santisima_purga_ultimo_exito_timestamp_segundos,
+  # santisima_purga_ultimo_registros_borrados) y el estado de Redis
+  # (santisima_redis_up) — ver _estado_redis y salud_detallada en http_api.py.
+  # Scrapear solo /metrics deja esos gauges con el último valor observado, y
+  # las alertas SantisimaPurgaRetencionAtrasada / SantisimaRedisInalcanzable
+  # evalúan un dato potencialmente viejo. El JSON que devuelve este endpoint
+  # no se ingesta (Prometheus solo lee el formato de exposición); lo que
+  # importa es el efecto secundario de llamarlo.
+  - job_name: santisima-health
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+    metrics_path: /metrics/health

@@ -114,6 +114,143 @@ class TestSalud:
         resp = cliente.get("/health/ready")
         assert resp.status_code == 503
 
+    def test_metrics_expone_formato_prometheus(self, cliente):
+        resp = cliente.get("/metrics")
+        assert resp.status_code == 200
+        assert "santisima_http_requests_total" in resp.text
+
+    def test_metrics_health_no_requiere_auth(self, cliente):
+        resp = cliente.get("/metrics/health")
+        assert resp.status_code == 200
+        cuerpo = resp.json()
+        assert cuerpo["llm_adapter_status"] == "ok"
+        assert cuerpo["db_backend"] == "sqlite"
+        assert cuerpo["ultima_purga"] is None
+
+    def test_metrics_health_refleja_degradacion(self, cliente):
+        cliente.app.state.api.caso_de_uso.servicio_respuestas.esta_degradado = True
+        cliente.get("/health/ready")  # actualiza el gauge, igual que un scrape real
+        resp = cliente.get("/metrics/health")
+        assert resp.json()["llm_adapter_status"] == "degraded"
+
+
+class TestMetricasDeOperacion:
+    """Campos de observabilidad agregados en la auditoría post-deployment
+    (ver monitoring/README.md y docs/runbooks/HEALTH_CHECKS.md): pool de
+    conexiones BD, estado de Redis, tamaño del historial y duración/recuento
+    de sesiones. Sin estos, "¿cuántas conversaciones hay abiertas?", "¿el
+    historial crece sin control?" y "¿Redis está caído?" solo se respondían
+    entrando al servidor a mano."""
+
+    def test_metrics_health_incluye_campos_de_operacion(self, cliente):
+        """Todos los campos que documenta HEALTH_CHECKS.md están presentes.
+
+        Se afirman las claves (no solo el status 200) porque el modo de
+        falla realista no es un 500, sino un campo que desaparece del JSON:
+        un dashboard que lee `db_connection_pool_active_connections` se
+        rompe en silencio si el endpoint deja de devolverlo.
+        """
+        resp = cliente.get("/metrics/health")
+        assert resp.status_code == 200
+        cuerpo = resp.json()
+        for campo in (
+            "llm_adapter_status",
+            "db_backend",
+            "db_connection_pool_active_connections",
+            "db_historial_filas",
+            "sesiones_activas",
+            "redis_rate_limit_enabled",
+            "redis_connection_status",
+            "ultima_purga",
+        ):
+            assert campo in cuerpo, f"falta el campo '{campo}' en /metrics/health"
+
+    def test_redis_disabled_cuando_no_esta_configurado(self, cliente):
+        """Sin usar_redis_rate_limit, el estado es "disabled" (no un error):
+        es la configuración correcta en single-instance (ver SCALING.md)."""
+        cuerpo = cliente.get("/metrics/health").json()
+        assert cuerpo["redis_rate_limit_enabled"] is False
+        assert cuerpo["redis_connection_status"] == "disabled"
+
+    def test_historial_filas_es_none_con_repositorio_en_memoria(self, cliente):
+        """`None` ≠ 0: el repositorio en memoria no implementa `contar_filas`,
+        así que el dato es "no medido" y no "historial vacío"."""
+        assert cliente.get("/metrics/health").json()["db_historial_filas"] is None
+
+    def test_sesiones_activas_empieza_en_cero(self, cliente):
+        assert cliente.get("/metrics/health").json()["sesiones_activas"] == 0
+
+    def test_crear_sesion_incrementa_sesiones_activas(self, cliente):
+        headers, _ = _device_headers(cliente)
+        resp = cliente.post("/api/v1/sesiones", headers=headers)
+        assert resp.status_code == 200
+        assert cliente.get("/metrics/health").json()["sesiones_activas"] == 1
+
+    def test_pool_de_conexiones_es_cero_en_sqlite(self, cliente):
+        """SQLite es un archivo, no un servidor: no hay conexiones
+        concurrentes que medir (ver el comentario en http_api.py)."""
+        cuerpo = cliente.get("/metrics/health").json()
+        assert cuerpo["db_backend"] == "sqlite"
+        assert cuerpo["db_connection_pool_active_connections"] == 0
+
+    def test_reiniciar_sesion_cierra_y_observa_duracion(self, cliente):
+        """Crear → reiniciar devuelve sesiones_activas a 0 y registra una
+        observación en el histograma de duración. Antes no había ninguna
+        métrica de duración de sesión (requisito explícito de la auditoría)."""
+        headers, _ = _device_headers(cliente)
+        session_id = cliente.post("/api/v1/sesiones", headers=headers).json()["session_id"]
+        assert cliente.get("/metrics/health").json()["sesiones_activas"] == 1
+
+        resp = cliente.post(f"/api/v1/sesiones/{session_id}/reiniciar", headers=headers)
+        assert resp.status_code == 204
+        assert cliente.get("/metrics/health").json()["sesiones_activas"] == 0
+
+        # El histograma es global del proceso, así que se comprueba que la
+        # serie existe (los tests de esta clase comparten el registro
+        # Prometheus y el conteo exacto dependería del orden de ejecución).
+        assert "santisima_session_duration_seconds_count" in cliente.get("/metrics").text
+
+    def test_degradacion_incrementa_contador_de_eventos(self, cliente):
+        """`santisima_llm_degradation_events_total` cuenta TRANSICIONES a
+        degradado, no el estado (para eso está el gauge): así se distingue
+        "degradado desde el arranque" de "se degradó y se recuperó 40 veces"."""
+        servicio = cliente.app.state.api.caso_de_uso.servicio_respuestas
+        antes = _valor_metrica(cliente.get("/metrics").text, "santisima_llm_degradation_events")
+
+        servicio.esta_degradado = True
+        cliente.get("/health/ready")
+        cliente.get("/health/ready")  # segundo poll: NO debe contar como otra entrada
+
+        despues = _valor_metrica(cliente.get("/metrics").text, "santisima_llm_degradation_events")
+        assert despues == antes + 1, "una transición debe contar exactamente una vez"
+
+    def test_recuperacion_de_degradacion_no_cuenta_evento(self, cliente):
+        """Volver a 0 no incrementa el contador de entradas (es una salida)."""
+        servicio = cliente.app.state.api.caso_de_uso.servicio_respuestas
+        servicio.esta_degradado = True
+        cliente.get("/health/ready")
+        durante = _valor_metrica(cliente.get("/metrics").text, "santisima_llm_degradation_events")
+
+        servicio.esta_degradado = False
+        cliente.get("/health/ready")
+        tras_recuperar = _valor_metrica(
+            cliente.get("/metrics").text, "santisima_llm_degradation_events"
+        )
+        assert tras_recuperar == durante
+
+
+def _valor_metrica(texto_prometheus: str, nombre: str) -> int:
+    """Extrae el valor de un contador sin labels del texto de /metrics.
+
+    Devuelve 0 si la serie todavía no existe (un contador sin incrementos
+    no se expone), así el test compara "cambió en 1" sin depender de que la
+    suite haya ejercitado antes ese camino.
+    """
+    for linea in texto_prometheus.splitlines():
+        if linea.startswith(f"{nombre}_total ") or linea.startswith(f"{nombre} "):
+            return int(float(linea.rsplit(" ", 1)[1]))
+    return 0
+
 
 class TestRegistroDeDispositivo:
     def test_registrar_dispositivo_no_requiere_auth(self, cliente):
@@ -173,6 +310,25 @@ class TestRegistroDeDispositivo:
         token_ajeno = emitir_device_token("device-cualquiera", settings_ajenos)
         resp = cliente.post("/api/v1/sesiones", headers={"Authorization": f"Bearer {token_ajeno}"})
         assert resp.status_code == 401
+
+    def test_device_token_huerfano_es_401_no_403(self, cliente):
+        """Firma genuina (mismo session_secret que la app viva) pero un
+        device_id que nunca pasó por `registrar()`: no es una revocación
+        deliberada (nadie llamó al endpoint de admin), es un token
+        huérfano — apuntando a un registro de dispositivos que nunca lo
+        tuvo. Antes esto colapsaba en el mismo 403 que una revocación real
+        (ver test_revocar_dispositivo_con_api_key_admin_lo_bloquea), lo que
+        le impedía al cliente distinguir "puedo re-registrarme solo" de
+        "esto está bloqueado a propósito, no debo bypasearlo"."""
+        from src.la_santisima_conversacional.infrastructure.security import emitir_device_token
+
+        settings_reales = cliente.app.state.settings
+        token_huerfano = emitir_device_token("device-jamas-registrado", settings_reales)
+        resp = cliente.post(
+            "/api/v1/sesiones", headers={"Authorization": f"Bearer {token_huerfano}"}
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "device_token no reconocido."
 
 
 class TestAdministracion:
@@ -310,13 +466,23 @@ class TestPrivacidad:
         """El resumen no debe afirmar que el contenido se guarda cifrado
         cuando SANTISIMA_CLAVE_CIFRADO no está configurada."""
         resumen = cliente.get("/privacidad").json()["resumen"]
-        assert "Se guardan cifrados" in resumen
+        assert "se cifran" in resumen
 
     def test_resumen_refleja_ausencia_de_cifrado_configurado(self, cliente, monkeypatch):
         """Sin SANTISIMA_CLAVE_CIFRADO (p. ej. en modo debug, donde
         validar_produccion no la exige) el resumen no debe afirmar que el
-        contenido se guarda cifrado cuando no es cierto."""
-        monkeypatch.delenv("SANTISIMA_CLAVE_CIFRADO", raising=False)
+        contenido se guarda cifrado cuando no es cierto.
+
+        ``delenv`` por sí solo no basta: solo quita la variable de
+        ``os.environ``, pero pydantic-settings también lee ``.env`` como
+        fuente — si el ``.env`` real de este checkout (el que se usa para
+        correr la app de verdad) define una clave, esta prueba pasaría con
+        él vacío mientras siguiera fallando en un dev local con `.env`
+        completo, que es justo el entorno donde más importa que funcione.
+        Fijar la variable a cadena vacía sí gana sobre `.env` sin importar
+        qué haya ahí.
+        """
+        monkeypatch.setenv("SANTISIMA_CLAVE_CIFRADO", "")
         monkeypatch.setenv("SANTISIMA_DEBUG", "true")
 
         from src.la_santisima_conversacional import config as config_module
@@ -423,3 +589,73 @@ class TestConsentimiento:
     def test_consentimiento_requiere_device_token(self, cliente):
         resp = cliente.post("/api/v1/dispositivos/consentimiento", json={"version": "v1"})
         assert resp.status_code == 401
+
+
+class TestCorsOrigenPropio:
+    """Regresión del bug de arranque "Verifica tu conexión".
+
+    El frontend servido por GET / llamaba a la API en
+    ``http://127.0.0.1:8000`` fijo. Al abrir la app en
+    ``http://localhost:8000`` (mismo backend, origen distinto para el
+    navegador) toda llamada era cross-origin, y con
+    ``SANTISIMA_CORS_ORIGINS`` apuntando solo a ``localhost:3000`` el
+    preflight respondía 400 "Disallowed CORS origin". Un fallo de CORS se
+    ve en el cliente igual que una caída de red, así que la UI mostraba
+    "Verifica tu conexión" con el backend perfectamente sano.
+
+    Estos tests fijan que el backend acepta su propio origen (y el
+    equivalente loopback localhost/127.0.0.1) y sigue rechazando terceros.
+    """
+
+    def _preflight(self, cliente, origen: str, ruta: str = "/api/v1/dispositivos"):
+        return cliente.options(
+            ruta,
+            headers={
+                "Origin": origen,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    def test_preflight_desde_el_propio_origen_es_aceptado(self, cliente):
+        """El caso exacto que fallaba: app servida por GET / en
+        http://localhost:8000 llamando a la API en el mismo backend."""
+        resp = self._preflight(cliente, "http://localhost:8000")
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:8000"
+
+    def test_loopback_localhost_y_127_son_equivalentes(self, cliente):
+        """localhost y 127.0.0.1 son el mismo backend en loopback, pero el
+        navegador los trata como orígenes distintos — deben autorizarse
+        los dos, o abrir la app en uno y llamar al otro vuelve a romper
+        el arranque."""
+        for origen in (
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost",
+            "http://127.0.0.1:3000",
+        ):
+            resp = self._preflight(cliente, origen)
+            assert resp.status_code == 200, origen
+            assert resp.headers["access-control-allow-origin"] == origen
+
+    def test_origen_de_terceros_sigue_rechazado(self, cliente):
+        """El arreglo no debe abrir CORS a cualquiera: solo al propio
+        origen de la app. Un host de red (o uno que solo *contiene* un
+        loopback en el nombre) debe seguir recibiendo 400."""
+        for origen in (
+            "https://evil.example",
+            "https://localhost.evil.example",
+            "https://evil.example/127.0.0.1",
+        ):
+            resp = self._preflight(cliente, origen)
+            assert resp.status_code == 400, origen
+            assert "access-control-allow-origin" not in resp.headers, origen
+
+    def test_health_es_alcanzable_por_el_propio_origen(self, cliente):
+        """El sondeo de diagnóstico del frontend (fetch /health en modo
+        no-cors) debe poder distinguir "backend caído" de "CORS": si el
+        backend responde a GET /health, el arranque no falló por red."""
+        resp = cliente.get("/health", headers={"Origin": "http://localhost:8000"})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}

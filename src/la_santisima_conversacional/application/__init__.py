@@ -71,10 +71,10 @@ class CasoDeUsoResponderMensaje:
         self.repositorio.save_message(
             session_id,
             Message(
-                role="assistant", 
-                content=respuesta.contenido, 
+                role="assistant",
+                content=respuesta.contenido,
                 timestamp=datetime.now(),
-                modelo=respuesta.modelo
+                modelo=respuesta.modelo,
             ),
         )
 
@@ -136,7 +136,7 @@ class CasoDeUsoResponderMensaje:
                 role="assistant",
                 content=contenido_final,
                 timestamp=datetime.now(),
-                modelo="streaming"  # Modelo desconocido en streaming
+                modelo="streaming",  # Modelo desconocido en streaming
             ),
         )
 

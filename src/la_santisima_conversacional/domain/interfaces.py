@@ -17,7 +17,13 @@ if TYPE_CHECKING:
 class Message:
     """Representa un mensaje dentro del historial de conversación."""
 
-    def __init__(self, role: str, content: str, timestamp: Optional[datetime] = None, modelo: Optional[str] = None):
+    def __init__(
+        self,
+        role: str,
+        content: str,
+        timestamp: Optional[datetime] = None,
+        modelo: Optional[str] = None,
+    ):
         if role not in ("user", "assistant", "system"):
             raise ValueError(f"Role inválido: {role}. Debe ser user, assistant o system.")
         self.role = role

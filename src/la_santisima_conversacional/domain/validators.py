@@ -87,10 +87,15 @@ def validar_clasificacion_intencion(
 
     # Validar valores de intención. Sin tildes a propósito: coincide con los
     # tokens exactos que flow.json le pide al LLM que devuelva
-    # ('vacia'/'incompleta'/'valida'). Antes esta lista usaba tildes
-    # ('vacía'/'válida'), lo que hacía que la validación fallara siempre
-    # contra la salida real del clasificador.
-    intenciones_validas = ["vacia", "incompleta", "valida"]
+    # ('vacia'/'incompleta'/'anuncio'/'valida'). Antes esta lista usaba
+    # tildes ('vacía'/'válida'), lo que hacía que la validación fallara
+    # siempre contra la salida real del clasificador.
+    # 'anuncio': el creyente declara intención de compartir algo pero
+    # todavía no compartió contenido ("quiero contarte algo muy personal").
+    # Antes cualquier mensaje no vacío/incompleto caía en 'valida' y recibía
+    # la respuesta larga completa (con reglas de tono, tamaño de párrafo,
+    # etc.) aunque no hubiera nada sustantivo que responder todavía.
+    intenciones_validas = ["vacia", "incompleta", "anuncio", "valida"]
     if clasificacion["intencion"] not in intenciones_validas:
         return (
             False,

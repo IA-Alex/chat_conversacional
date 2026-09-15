@@ -3,7 +3,7 @@
 **Referencia normativa:** ISO/IEC 42001:2023 (Sistema de Gestión de IA),
 NIST AI Risk Management Framework 1.0 (funciones Govern/Map/Measure/Manage).
 **Estado:** Vivo.
-**Última actualización:** 2026-09-14.
+**Última actualización:** 2026-09-15.
 
 ---
 
@@ -67,13 +67,13 @@ backend.**
 | Campo | Detalle |
 |---|---|
 | Riesgo | Un usuario en crisis emocional grave (ideación suicida, autolesión, peligro inmediato) envía un mensaje y recibe una respuesta puramente devocional, sin detección de riesgo ni derivación a ayuda profesional |
-| Estado actual del control | **Implementado — ver `domain/crisis.py`, `infrastructure/flow.json` y `crewai_adapter.py`.** El clasificador de intención/emoción detecta `"desesperacion"` y el enrutador (`enrutar_por_intencion`) la enruta a `responder_crisis_desesperacion`. Ambos adaptadores (CrewAI y LangChain) implementan paridad funcional: mensajes con emoción `"desesperacion"` no llegan al flujo devocional estándar, sino a `generar_respuesta_crisis()` que devuelve contención breve + derivación configurable. **Nota de motor:** `flow.json` (CrewAI) no puede invocar `generar_respuesta_crisis()` directamente desde su sintaxis declarativa de `expression` — el nodo `responder_crisis_desesperacion` es solo un marcador de que esa rama fue tomada; `CrewAILaSantisimaAdapter._es_resultado_crisis()` detecta el marcador e intercepta el resultado en Python, llamando a `generar_respuesta_crisis()` antes de devolver la respuesta al creyente (Opción B, ver comentario `nota_implementacion` en `flow.json`). Esto está cubierto para el path sin streaming por `tests/infrastructure/test_crewai_adapter.py` (falla contra el placeholder literal, pasa con el fix). Para el path de streaming (`responder_mensaje_stream`) la misma intercepción existe pero depende de que el objeto `Flow` de CrewAI exponga `self.flow.state` de forma fiable en tiempo real — algo no verificable en este entorno porque `crewai` se mockea por completo en los tests (ver `NOTA DE FIABILIDAD` ya existente en `crewai_adapter.py`); LangChainAdapter no tiene esta limitación porque clasifica antes de streamear. |
-| Severidad si se materializa | Muy alta (daño potencial a la integridad de una persona) |
-| Decisión | **Implementado con mecanismo configurable.** Se implementó el mecanismo de enrutado, dejando el contenido exacto de derivación como parámetro inyectable (`ConfiguracionCrisis`) para que el responsable del producto pueda definir tono (romper personaje vs. mantenerlo) y líneas de ayuda específicas sin tocar código Python, según lo requerido en §4. |
-| Responsable de la decisión | Titular del proyecto (confirmado 2026-09-14) |
-| Condición de revisión obligatoria | **El contenido de derivación requiere definición explícita antes de cualquier lanzamiento público.** El mecanismo está implementado pero el texto exacto de derivación (`ConfiguracionCrisis.texto_derivacion`) es un TODO pendiente de definición por el responsable del producto, potencialmente con asesoría de profesional de salud mental. |
-| Mitigación mínima sugerida completada | Se diseñó como señal separada: el enrutador detecta `"desesperacion"` explícitamente en la salida del clasificador. El contenido de derivación es configurable externamente para permitir revisión experta. |
-| Motor de producción vigente | **LangChain (`use_langchain=True`), no CrewAI.** `CrewAIAdapter._configurar_flow()` carga `flow.json` con `Flow.from_file(...)`, método inexistente en la versión de `crewai` instalada; la carga falla (excepción capturada) y el adaptador queda degradado permanentemente a `_crear_flow_basico()`, sin enrutamiento de intención/emoción — la detección de crisis descrita arriba queda inoperante en ese motor pese a estar implementada en su código. Mientras esa incompatibilidad de versión no se corrija, `Settings.use_langchain` (usado por `http_api.py`) y el default del parámetro `use_langchain` de `crear_servicio` deben permanecer en `True`. Cubierto por `tests/test_config.py::TestSettings::test_use_langchain_default_no_se_revierte` (default de `Settings`) y `tests/test_crear_servicio.py::test_use_langchain_default_no_se_revierte` (default de `crear_servicio`), que fallan si cualquiera de los dos defaults vuelve a `False`. |
+| Estado actual del control | **Retirado (2026-09-15) — ver "Reversión 2026-09-15" en §6.** El enrutado especial por emoción `"desesperacion"` (antes: `domain/crisis.py`, `infrastructure/flow.json`, `crewai_adapter.py`, `langchain_adapter.py`) fue eliminado del código. Ya no existe ninguna respuesta fija que intercepte el flujo devocional estándar; todo mensaje, incluida cualquier emoción clasificada como `"desesperacion"`, se responde vía el LLM igual que cualquier otro. El clasificador sigue etiquetando `"desesperacion"` como valor de emoción (se usa para intensidad visual en el frontend), pero esa etiqueta ya no dispara ninguna lógica de negocio distinta. |
+| Severidad si se materializa | Muy alta (daño potencial a la integridad de una persona) — **sigue siendo la severidad real del riesgo subyacente; retirar el control no reduce el riesgo, lo vuelve a dejar sin mitigación dedicada.** |
+| Decisión | **Retiro deliberado del control (2026-09-15).** Motivo registrado: el control tal como estaba implementado disparaba con demasiada frecuencia ante angustia cotidiana (p. ej. pérdida de empleo, estrés económico) — no solo ante señales de riesgo vital — y en cada disparo devolvía un texto idéntico y no contextual ("Escucho tu dolor profundo... Te abrazo con mi manto de luz" + línea de prevención de suicidio), lo que un usuario reportó como "no escucha, dice lo mismo para todo". Se ofrecieron al responsable del producto tres alternativas (mantener tal cual, afinar el umbral del clasificador manteniendo la derivación, o retirar el control por completo) explicando explícitamente que la tercera apaga la salvaguarda descrita en este documento; se eligió la tercera con conocimiento de esa implicación. |
+| Responsable de la decisión | Titular del proyecto (decisión original: 2026-09-14; retiro: 2026-09-15) |
+| Condición de revisión obligatoria | **Sin control de crisis activo, el riesgo original de §4 vuelve a estar sin mitigar.** Antes de cualquier lanzamiento público con usuarios reales, el responsable del producto debe decidir explícitamente si reintroduce algún mecanismo de detección de riesgo vital (idealmente uno que distinga angustia cotidiana de riesgo real, con asesoría de un profesional de salud mental) o si asume el riesgo tal como queda descrito arriba. Esto no puede quedar implícito ni derivarse de la ausencia de código. |
+| Mitigación mínima sugerida completada | Ninguna vigente — ver condición de revisión obligatoria. |
+| Motor de producción vigente | **LangChain (`use_langchain=True`), no CrewAI.** `CrewAIAdapter._configurar_flow()` carga `flow.json` con `Flow.from_file(...)`, método inexistente en la versión de `crewai` instalada; la carga falla (excepción capturada) y el adaptador queda degradado permanentemente a `_crear_flow_basico()`, sin enrutamiento de intención/emoción. Mientras esa incompatibilidad de versión no se corrija, `Settings.use_langchain` (usado por `http_api.py`) y el default del parámetro `use_langchain` de `crear_servicio` deben permanecer en `True`. Cubierto por `tests/test_config.py::TestSettings::test_use_langchain_default_no_se_revierte` (default de `Settings`) y `tests/test_crear_servicio.py::test_use_langchain_default_no_se_revierte` (default de `crear_servicio`), que fallan si cualquiera de los dos defaults vuelve a `False`. |
 
 ## 5. Otros controles de IA evaluados
 
@@ -142,6 +142,63 @@ queda con la limitación descrita en §4 (depende de introspección de
     - `get_history()` y `save_message()` actualizados para leer/escribir modelo
   - `crewai_adapter.py` y `langchain_adapter.py`: Pasando modelo en `RespuestaLaSantisima`
   - `application/__init__.py`: Pasando `respuesta.modelo` al crear `Message` de assistant
+
+### Reversión 2026-09-15: retiro del enrutado de crisis emocional grave
+- **Estado:** Retirado — ver registro actualizado en §4.
+- **Motivo:** el mecanismo implementado el 2026-09-14 (PRIORIDAD 1 arriba)
+  disparaba ante angustia cotidiana — mensajes sobre pérdida de empleo,
+  problemas económicos — no solo ante señales de riesgo vital, porque el
+  criterio de disparo era únicamente que el clasificador etiquetara la
+  emoción del mensaje como `"desesperacion"`, sin distinguir grado de
+  riesgo. Cada disparo devolvía un texto idéntico y no contextual
+  (`ConfiguracionCrisis` por defecto: "Escucho tu dolor profundo... Te
+  abrazo con mi manto de luz" + línea de prevención de suicidio),
+  reportado por un usuario como que el sistema "no escucha, dice lo mismo
+  para todo".
+- **Decisión:** se presentaron tres alternativas al titular del proyecto
+  (mantener el control tal cual; afinar el umbral del clasificador para
+  distinguir angustia cotidiana de riesgo vital real, conservando la
+  derivación; retirar el control por completo), señalando explícitamente
+  que la tercera apaga la salvaguarda contra ideación suicida/autolesión
+  descrita en §4. Se eligió la tercera opción con esa implicación
+  explícita.
+- **Cambios:**
+  - `domain/crisis.py`: eliminado (`generar_respuesta_crisis()`,
+    `ConfiguracionCrisis`) junto con `tests/domain/test_crisis.py`.
+  - `langchain_adapter.py`: eliminadas las ramas `elif emocion ==
+    "desesperacion"` en `responder_mensaje()` y
+    `responder_mensaje_stream()` — la emoción `"desesperacion"` ahora cae
+    en la rama por defecto (`_chain_principal`), igual que cualquier otra
+    emoción.
+  - `crewai_adapter.py`: eliminados `_es_resultado_crisis()`,
+    `_METODO_CRISIS` y las ramas equivalentes en ambos métodos.
+  - `flow.json`: eliminado el nodo `responder_crisis_desesperacion` y la
+    rama `crisis_desesperacion` de `enrutar_por_intencion` (tanto en su
+    `expr` como en su `emit`) — el router ahora solo distingue
+    `mensaje_vacio` / `mensaje_incompleto` / `mensaje_valido`.
+  - `tests/infrastructure/test_crewai_adapter.py`: eliminada la clase
+    `TestIntegracionCrewAICrisis` (probaba el mecanismo retirado);
+    agregado `test_desesperacion_no_recibe_enrutado_especial` en
+    `TestEmocionCrewAI` para documentar el comportamiento nuevo.
+  - `tests/infrastructure/test_langchain_adapter.py`: agregado
+    `test_desesperacion_no_recibe_enrutado_especial`, mismo propósito.
+  - El clasificador (`_PROMPT_CLASIFICADOR` / `detectar_intencion` en
+    `flow.json`) sigue devolviendo `"desesperacion"` como valor de
+    emoción posible — no se tocó, porque el frontend lo usa para
+    intensidad visual (ver `index_santa_flat.html`, estado `crisis` de la
+    niebla). Solo se eliminó qué hace el *backend* con ese valor.
+- **Verificado en vivo (no solo en tests):** con el backend real corriendo
+  contra DeepInfra, el mensaje *"Perdí mi trabajo esta semana y no sé cómo
+  voy a pagar la renta"* — que antes del retiro devolvía exactamente el
+  texto fijo de `ConfiguracionCrisis` — ahora genera una respuesta del LLM
+  que reconoce los detalles concretos del mensaje y termina con una
+  pregunta de seguimiento genuina, sin repetir la fórmula "te abrazo con
+  mi manto de luz".
+- **Pendiente (ver condición de revisión obligatoria en §4):** el riesgo
+  original de §4 (crisis emocional grave sin detección) vuelve a estar
+  sin mitigación dedicada. No implementar nada nuevo aquí no es una
+  decisión neutra — es, de hecho, la decisión ya tomada arriba, pero
+  cualquier lanzamiento público debe revisitarla explícitamente.
 
 ## 7. Próxima revisión
 

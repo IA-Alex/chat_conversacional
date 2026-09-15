@@ -1,0 +1,44 @@
+# docker-compose.purga.yml — purga de retención como tarea de Compose.
+#
+# Alternativa al systemd timer (scripts/systemd/) y al wrapper de cron
+# (scripts/retencion_cron.sh) para despliegues en contenedor, donde no hay
+# systemd ni cron del host. El backend de este proyecto no trae Dockerfile
+# (ver docs/runbooks/DEPLOYMENT.md → "Lo que NO existe todavía"), así que
+# este Compose reutiliza la imagen oficial de Python y monta el repo tal
+# cual — no requiere construir ni publicar ninguna imagen propia, que es
+# justamente el requisito de "no sumar infraestructura nueva" de la
+# auditoría.
+#
+# Uso (una sola vez):
+#   docker compose -f docker-compose.purga.yml run --rm purga-retencion
+#
+# Uso (diario, desde el cron del host):
+#   0 3 * * * cd /ruta/al/repo && docker compose -f docker-compose.purga.yml run --rm purga-retencion
+#
+# El resultado se escribe en purga_estado.json (bind mount del repo), el
+# MISMO archivo que lee GET /metrics/health — por eso la alerta
+# SantisimaPurgaRetencionAtrasada funciona igual con cualquiera de los tres
+# mecanismos: lo que se monitorea es el archivo, no el scheduler.
+#
+# Este archivo NO arranca el backend: es exclusivamente el job de purga.
+
+services:
+  purga-retencion:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      # El repo completo: la purga necesita scripts/, src/ y el .db al que
+      # apunta SANTISIMA_SQLITE_DB_PATH.
+      - .:/app
+    env_file:
+      # Mismas variables que el backend (retencion_dias, rutas, cifrado) —
+      # un desajuste aquí es la causa típica de "la purga corrió pero la
+      # alerta sigue disparada".
+      - .env
+    # --no-dev equivalente: este job solo necesita las dependencias base
+    # (cryptography, pydantic-settings) para abrir el repositorio y borrar
+    # filas. No importa FastAPI ni el motor de IA.
+    command: >
+      sh -c "pip install --quiet --disable-pip-version-check 'cryptography>=42.0.0' 'pydantic-settings>=2.2.0'
+             && python scripts/purgar_retencion.py"
+    restart: "no"

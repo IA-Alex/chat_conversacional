@@ -11,7 +11,8 @@ dependencies = [
     "fastapi>=0.110.0",         # Backend HTTP (presentation/http_api.py)
     "uvicorn[standard]>=0.29.0", # Servidor ASGI
     "pydantic-settings>=2.2.0", # Configuración centralizada (config.py)
-    "cryptography>=42.0.0"      # Cifrado en reposo del historial (SQLite)
+    "cryptography>=42.0.0",     # Cifrado en reposo del historial (SQLite)
+    "prometheus-client>=0.20.0" # Métricas /metrics (infrastructure/metrics.py), pura Python
 ]
 # Opcional: Mantener crewai como dependencia opcional
 [project.optional-dependencies]
@@ -40,6 +41,9 @@ docs = [
     "mkdocs-material>=9.0.0",
     "plantuml-markdown>=3.0.0"
 ]
+# Pruebas de carga (tests/load/, ver tests/load/README.md) -- no se instala
+# en CI: requiere un servidor corriendo de verdad (LLM real o stub).
+load = ["locust>=2.20.0"]
 
 [build-system]
 requires = ["hatchling"]

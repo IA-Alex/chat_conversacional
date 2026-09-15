@@ -1,0 +1,119 @@
+# Reglas de alerta Prometheus para el backend La Santísima Muerte.
+#
+# Cárgalas en un Prometheus que ya scrapea GET /metrics de este servicio
+# (ver monitoring/README.md para el scrape config). Los nombres de
+# métrica están definidos en src/la_santisima_conversacional/infrastructure/metrics.py.
+groups:
+  - name: santisima-backend
+    rules:
+      - alert: SantisimaErrorRateAlto
+        expr: |
+          sum(rate(santisima_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(santisima_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Error rate del backend > 5% en los últimos 5 minutos"
+          runbook: "docs/runbooks/INCIDENT_RESPONSE.md#error-rate-alto"
+
+      - alert: SantisimaLatenciaP95Alta
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(santisima_http_request_latency_seconds_bucket{endpoint="/api/v1/mensajes"}[5m])) by (le)
+          ) > 5
+        for: 5m
+        labels:
+          severidad: media
+        annotations:
+          summary: "p95 de POST /api/v1/mensajes > 5s en los últimos 5 minutos"
+          runbook: "docs/runbooks/TROUBLESHOOTING.md#latencia-alta"
+
+      - alert: SantisimaRateLimitSpike
+        expr: sum(rate(santisima_rate_limit_exceeded_total[5m])) > 1
+        for: 10m
+        labels:
+          severidad: media
+        annotations:
+          summary: "Rate limit violations sostenidas > 1/s durante 10 minutos"
+          runbook: "docs/runbooks/INCIDENT_RESPONSE.md#rate-limit-violations-spike"
+
+      - alert: SantisimaLLMDegradado
+        expr: santisima_llm_degradado == 1
+        for: 2m
+        labels:
+          severidad: alta
+        annotations:
+          summary: "El motor de IA está operando en modo fallback (degradado)"
+          runbook: "docs/runbooks/TROUBLESHOOTING.md#llm-degraded"
+
+      - alert: SantisimaPurgaRetencionAtrasada
+        expr: (time() - santisima_purga_ultimo_exito_timestamp_segundos) > 86400
+        for: 10m
+        labels:
+          severidad: media
+        annotations:
+          summary: "La purga de retención no corre exitosamente hace más de 24h"
+          runbook: "docs/runbooks/TROUBLESHOOTING.md#purga-de-retencion-atrasada"
+
+      # Conexiones saturadas contra Postgres. ``max_connections`` por defecto
+      # es 100: alertar en 80 da margen para reaccionar antes del
+      # "FATAL: sorry, too many clients already". Se alerta SOLO si el
+      # backend es postgres (el gauge no existe en sqlite, así que la serie
+      # simplemente no está y la alerta no aplica).
+      - alert: SantisimaPostgresConexionesSaturadas
+        expr: santisima_db_connections_active{backend="postgres"} > 80
+        for: 5m
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Más de 80 conexiones simultáneas a Postgres (>80% de max_connections por defecto)"
+          runbook: "docs/runbooks/HEALTH_CHECKS.md#db_connection_pool_active_connections-entero"
+
+      # Errores de BD sostenidos: el síntoma visible al usuario es un 5xx o
+      # un timeout, pero la causa (DSN roto, servidor caído, disco lleno)
+      # solo es visible aquí.
+      - alert: SantisimaErroresBaseDeDatos
+        expr: sum(rate(santisima_db_errors_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Operaciones de base de datos fallando de forma sostenida"
+          runbook: "docs/runbooks/TROUBLESHOOTING.md"
+
+      # Redis del rate limiter configurado pero inalcanzable (ver
+      # _estado_redis en http_api.py). El gauge solo lo actualiza
+      # /metrics/health, por eso el runbook indica scrapearlo.
+      - alert: SantisimaRedisInalcanzable
+        expr: santisima_redis_up == 0 and santisima_redis_up offset 1h == 1
+        for: 5m
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Redis del rate limiter configurado pero dejó de responder"
+          runbook: "docs/runbooks/HEALTH_CHECKS.md#redis_connection_status-disabled-ok-unreachable"
+
+      # El motor entra en degradado repetidamente: distinto de estar
+      # degradado (SantisimaLLMDegradado, que es el estado). Entradas
+      # repetidas indican inestabilidad del proveedor, no una caída única.
+      - alert: SantisimaDegradacionRecurrente
+        expr: increase(santisima_llm_degradation_events_total[1h]) > 3
+        for: 5m
+        labels:
+          severidad: media
+        annotations:
+          summary: "El motor de IA entró en degradado más de 3 veces en la última hora"
+          runbook: "docs/runbooks/TROUBLESHOOTING.md#llm-degraded"
+
+      - alert: SantisimaAuthFailuresSpike
+        expr: sum(rate(santisima_auth_failures_total{motivo="revocado"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severidad: baja
+        annotations:
+          summary: "Requests sostenidos de dispositivos revocados (posible abuso)"
+          runbook: "docs/runbooks/INCIDENT_RESPONSE.md#rate-limit-violations-spike"

@@ -1,0 +1,169 @@
+{
+  "title": "La Santísima Muerte — Backend",
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Error rate (5xx / total)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(santisima_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(santisima_http_requests_total[5m]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latencia POST /api/v1/mensajes (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(santisima_http_request_latency_seconds_bucket{endpoint=\"/api/v1/mensajes\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(santisima_http_request_latency_seconds_bucket{endpoint=\"/api/v1/mensajes\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(santisima_http_request_latency_seconds_bucket{endpoint=\"/api/v1/mensajes\"}[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Rate limit violations / min, por tipo",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(santisima_rate_limit_exceeded_total[1m])) by (tipo) * 60", "legendFormat": "{{tipo}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Auth failures / min, por motivo",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(santisima_auth_failures_total[1m])) by (motivo) * 60", "legendFormat": "{{motivo}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "LLM degradado (0=ok, 1=fallback)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "targets": [{ "expr": "santisima_llm_degradado" }]
+    },
+    {
+      "id": 6,
+      "title": "Mensajes/min",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "targets": [{ "expr": "sum(rate(santisima_messages_total[1m])) * 60" }]
+    },
+    {
+      "id": 7,
+      "title": "Última purga de retención exitosa (horas atrás)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 16 },
+      "targets": [{ "expr": "(time() - santisima_purga_ultimo_exito_timestamp_segundos) / 3600" }]
+    },
+    {
+      "id": 8,
+      "title": "Dispositivos revocados (total)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 16 },
+      "targets": [{ "expr": "santisima_device_revocations_total" }]
+    },
+    {
+      "id": 9,
+      "title": "Sesiones activas / duración de sesión",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "sum(santisima_active_sessions)",
+          "legendFormat": "sesiones activas (todas las instancias)"
+        },
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(santisima_session_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p50 de duración de sesión"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(santisima_session_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p95 de duración de sesión"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Conexiones a la BD (activas) vs max_connections",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "santisima_db_connections_active{backend=\"postgres\"}",
+          "legendFormat": "conexiones activas ({{backend}})"
+        },
+        {
+          "expr": "rate(santisima_db_connections_created_total[5m])",
+          "legendFormat": "conexiones/s creadas"
+        },
+        {
+          "expr": "santisima_db_historial_filas{backend=\"postgres\"}",
+          "legendFormat": "filas del historial"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Errores de BD / min y estado de Redis",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(santisima_db_errors_total[5m])) by (backend)",
+          "legendFormat": "errores BD/s ({{backend}})"
+        },
+        {
+          "expr": "santisima_redis_up",
+          "legendFormat": "redis_up (1=ok)"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Entradas a modo degradado del LLM (transiciones/h)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "increase(santisima_llm_degradation_events_total[1h])",
+          "legendFormat": "entradas a degradado en la última hora"
+        },
+        {
+          "expr": "santisima_llm_degradado",
+          "legendFormat": "estado actual (1=degradado)"
+        }
+      ]
+    }
+  ]
+}

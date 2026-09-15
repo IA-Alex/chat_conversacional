@@ -25,22 +25,27 @@ En producción: mismo ASGI app detrás de un servidor real (uvicorn con
 varios workers, o gunicorn con worker uvicorn), detrás de un proxy TLS.
 """
 
+import hashlib
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator, Iterator, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from .. import crear_servicio
 from ..config import Settings, get_settings
+from ..infrastructure import metrics
 from ..infrastructure.dispositivos import RegistroDispositivos
 from ..infrastructure.logging_config import configurar_logging
+from ..infrastructure.purga_estado import EstadoPurga, leer_estado
 from ..infrastructure.rate_limit import LimitadorTasa, LimitadorTasaProtocolo
 from ..infrastructure.security import (
     bearer_scheme,
@@ -50,6 +55,7 @@ from ..infrastructure.security import (
     verificar_api_key,
     verificar_firma_device_token,
 )
+from . import _estado_observabilidad as estado_observabilidad
 from .api import APILaSantisima
 
 logger = logging.getLogger(__name__)
@@ -61,6 +67,14 @@ logger = logging.getLogger(__name__)
 # también contiene documentos internos de compliance (DPIA, RoPA,
 # gobernanza) que nunca deben quedar públicos.
 _RUTA_AVISO_PRIVACIDAD = Path(__file__).resolve().parents[3] / "docs" / "privacidad.md"
+
+# Frontend servido desde el propio backend, en el mismo origen que la API
+# (127.0.0.1:8000 tanto para GET / como para POST /api/v1/...). Evita que
+# quien abra el HTML directamente por file:// (Origin: null) choque contra
+# CORS — al ser mismo origen, el navegador no aplica esa política en
+# absoluto. Un solo archivo explícito, igual que _RUTA_AVISO_PRIVACIDAD: no
+# se monta el repo como estático, que expondría .env y las bases sqlite.
+_RUTA_FRONTEND = Path(__file__).resolve().parents[3] / "index_santa_flat.html"
 
 
 # --- Contenedor de dependencias, ensamblado una vez al arrancar ---------
@@ -103,6 +117,25 @@ def _crear_limitador(limite: int, settings: Settings, prefijo_clave: str) -> Lim
             prefijo_clave=prefijo_clave,
         )
     return LimitadorTasa(limite)
+
+
+def _fingerprint_secreto(secreto: Optional[str]) -> str:
+    """Hash corto y no reversible de ``session_secret``, solo para
+    diagnóstico entre arranques — nunca el valor real en logs.
+
+    Motivación concreta: ``session_secret`` puede venir de una variable de
+    entorno realmente exportada en el shell, que en pydantic-settings le
+    gana en silencio al valor de ``.env`` sin ningún aviso (precedencia
+    estándar: entorno > archivo). Si eso pasa entre dos arranques del
+    mismo checkout, TODO device_token/session_id emitido antes dejará de
+    verificar después — el síntoma es "sesión inválida" o "dispositivo
+    revocado" que no lo es, y sin esto, diagnosticarlo requiere emitir un
+    token de prueba y compararlo a mano. Con esto basta con mirar si el
+    fingerprint cambió entre dos líneas de log de arranque.
+    """
+    if not secreto:
+        return "(sin configurar)"
+    return hashlib.sha256(secreto.encode("utf-8")).hexdigest()[:8]
 
 
 @asynccontextmanager
@@ -169,13 +202,117 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.registro_dispositivos = RegistroDispositivosSQLite(settings.dispositivos_db_path)
 
     app.state.settings = settings
+    # Estado de observabilidad fresco por instancia de app.
+    #
+    # Vive en ``app.state`` y no en una variable de módulo: ``http_api`` es un
+    # singleton de módulo (uvicorn importa el módulo una vez), pero los tests
+    # construyen la app varias veces en el mismo proceso y compartirían las
+    # sesiones abiertas de la app anterior — un test que crea una sesión
+    # dejaría a la siguiente viendo "1 sesión activa" desde el arranque. En
+    # producción solo hay una app, así que esto es equivalente a no hacer nada.
+    #
+    # ``_ESTADO_OBS_DEFAULT`` (el objeto de módulo) se usa solo como respaldo
+    # para los helpers que corren fuera de un request; los endpoints leen
+    # ``request.app.state.estado_obs`` vía ``_estado``.
+    app.state.estado_obs = estado_observabilidad.EstadoObservabilidad()
+    _ESTADO_OBS_DEFAULT.set(app.state.estado_obs)
     logger.info(
-        "Backend La Santísima Muerte listo (use_langchain=%s, postgres=%s, redis_rate_limit=%s).",
+        "Backend La Santísima Muerte listo (use_langchain=%s, postgres=%s, "
+        "redis_rate_limit=%s, session_secret_fingerprint=%s).",
         settings.use_langchain,
         settings.usar_postgres,
         settings.usar_redis_rate_limit,
+        _fingerprint_secreto(settings.session_secret),
     )
     yield
+
+
+def _permitir_origen_propio(app: FastAPI, settings: Settings) -> None:
+    """Permite el origen con el que el navegador alcanzó ESTE backend.
+
+    Motivación (bug real de arranque): con ``API_BASE`` apuntando a
+    ``http://127.0.0.1:8000`` y ``SANTISIMA_CORS_ORIGINS`` en
+    ``http://localhost:3000``, abrir la app en ``http://localhost:8000``
+    hacía cross-origin cada llamada. ``CORSMiddleware`` responde al
+    preflight con 400 "Disallowed CORS origin" — un error de CORS se ve
+    en el cliente igual que una caída de red, y la UI mostraba "Verifica
+    tu conexión" con el backend perfectamente sano.
+
+    Se recibe ``settings`` (y no se llama ``get_settings()`` aquí) para
+    que los tests puedan construír la app con ajustes sustituidos vía
+    ``app.state``/dependency overrides sin efectos de módulo.
+
+    No se añade nada si ya hay un comodín (``*``): sería redundante.
+    """
+    origenes = set(settings.cors_origins)
+
+    @app.middleware("http")
+    async def _reflejar_origen_propio(request: Request, call_next):  # type: ignore[no-untyped-def]
+        respuesta = await call_next(request)
+
+        if "*" in origenes:
+            return respuesta
+
+        origen = request.headers.get("origin")
+        if not origen:
+            return respuesta
+
+        if origen not in _origenes_loopback(request):
+            # Origen de terceros: CORSMiddleware ya lo rechazó (400) y no
+            # debe recibir ninguna cabecera que lo autorice.
+            return respuesta
+
+        # Ya viene autorizado por CORSMiddleware (allow_origin_regex);
+        # este middleware solo deja la cabecera explícita para clientes
+        # que inspeccionan la respuesta.
+        respuesta.headers["Access-Control-Allow-Origin"] = origen
+        respuesta.headers["Access-Control-Allow-Methods"] = "GET, POST"
+        respuesta.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        respuesta.headers["Vary"] = "Origin"
+        return respuesta
+
+
+def _instrumentar_metricas(app: FastAPI) -> None:
+    """Cuenta y cronometra cada request HTTP (Prometheus), por endpoint.
+
+    Usa la plantilla de ruta (``request.scope["route"].path``, p. ej.
+    ``/admin/dispositivos/{device_id}/revocar``) y no la URL real: con la
+    URL real, cada device_id distinto crearía una serie temporal nueva
+    (cardinalidad sin límite, el error clásico de instrumentación
+    Prometheus). Solo está disponible DESPUÉS de que el routing resolvió
+    la request (tras ``call_next``); antes de eso no hay ``route`` en el
+    scope.
+    """
+
+    @app.middleware("http")
+    async def _medir_request(request: Request, call_next):  # type: ignore[no-untyped-def]
+        inicio = time.monotonic()
+        respuesta = await call_next(request)
+        duracion = time.monotonic() - inicio
+
+        route = request.scope.get("route")
+        endpoint = route.path if route is not None else request.url.path
+        metrics.http_requests_total.labels(
+            endpoint=endpoint, metodo=request.method, status=str(respuesta.status_code)
+        ).inc()
+        metrics.http_request_latency_seconds.labels(endpoint=endpoint).observe(duracion)
+        return respuesta
+
+
+def _origenes_loopback(request: Request) -> set:
+    """Orígenes del propio backend alcanzable por loopback.
+
+    ``localhost:8000`` y ``127.0.0.1:8000`` son el MISMO backend en la
+    interfaz de loopback, pero el navegador los trata como orígenes
+    distintos. Se aceptan los dos: siguen siendo la propia máquina.
+    """
+    puerto = request.url.port or 80
+    esquema = request.url.scheme
+    return {
+        f"{esquema}://{request.url.netloc}",
+        f"{esquema}://localhost:{puerto}",
+        f"{esquema}://127.0.0.1:{puerto}",
+    }
 
 
 def crear_app() -> FastAPI:
@@ -189,10 +326,30 @@ def crear_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins or (["*"] if settings.debug else []),
+        # Orígenes de loopback (http://localhost:PUERTO y
+        # http://127.0.0.1:PUERTO): son ESTE mismo backend, pero el
+        # navegador los trata como orígenes distintos de aquel con el que
+        # sirvió la página (GET /). Sin esta regla, abrir la app en
+        # http://localhost:8000 mientras el frontend llama a
+        # http://127.0.0.1:8000 hacía que CORSMiddleware respondiera al
+        # preflight con 400 "Disallowed CORS origin"; el cliente lo ve
+        # igual que una caída de red y mostraba "Verifica tu conexión" con
+        # el backend sano.
+        #
+        # El regex es deliberadamente estricto: solo loopback literal y un
+        # puerto numérico — nunca un host de red (un origen de terceros
+        # sigue recibiendo 400, ver TestCorsOrigenPropio).
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=False,
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    # Deja la cabecera CORS explícita para los orígenes de loopback (ver
+    # ``_permitir_origen_propio``). CORSMiddleware ya los autoriza por el
+    # regex de arriba; esto lo hace observable en la respuesta.
+    _permitir_origen_propio(app, settings)
+    _instrumentar_metricas(app)
 
     app.include_router(_router())
     return app
@@ -236,6 +393,7 @@ def _exigir_tasa_registro(
     ip = request.client.host if request.client else "ip-desconocida"
     if not limitador_registro.permitir(ip):
         logger.warning("Límite de registro de dispositivo excedido para IP %s.", ip)
+        metrics.rate_limit_exceeded_total.labels(tipo="registro").inc()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Demasiados registros de dispositivo. Intenta de nuevo en breve.",
@@ -251,13 +409,26 @@ def verificar_dispositivo(
     """Dependency de FastAPI: exige ``Authorization: Bearer <device_token>`` válido.
 
     Verifica, en orden: que el token esté presente, que su firma sea
-    genuina (``verificar_firma_device_token``, criptografía pura) y que el
-    dispositivo no esté revocado (``registro.esta_revocado``, requiere
-    estado). Devuelve el ``device_id`` para que el endpoint lo use como
-    identidad del llamador — el mismo rol que cumplía ``api_key`` antes de
-    este cambio.
+    genuina (``verificar_firma_device_token``, criptografía pura), que el
+    ``device_id`` exista en el registro (``registro.existe``) y que no
+    esté revocado (``registro.esta_revocado``). Devuelve el ``device_id``
+    para que el endpoint lo use como identidad del llamador — el mismo rol
+    que cumplía ``api_key`` antes de este cambio.
+
+    "No existe" y "revocado" se distinguen a propósito (401 vs. 403): una
+    firma genuina sin fila en el registro es un device_token huérfano —
+    emitido por este backend en algún momento, pero apuntando a un
+    registro que ya no lo tiene (p. ej. una base de datos de dispositivos
+    restaurada o distinta) — no una revocación deliberada. El cliente
+    (ver auto-recuperación en el frontend, que reacciona a 401) puede
+    re-registrarse solo; una revocación real (403) nunca debe
+    autocorregirse así, o el mecanismo de bloqueo de abuso no serviría de
+    nada. Antes ambos casos colapsaban en el mismo 403 "revocado", lo que
+    además dejaba un log engañoso (dispositivos que nunca fueron
+    revocados, reportados como revocados).
     """
     if credenciales is None:
+        metrics.auth_failures_total.labels(motivo="sin_token").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Falta encabezado Authorization: Bearer <device_token>. "
@@ -266,13 +437,22 @@ def verificar_dispositivo(
         )
     device_id = verificar_firma_device_token(credenciales.credentials, settings)
     if device_id is None:
+        metrics.auth_failures_total.labels(motivo="firma_invalida").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="device_token inválido.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not registro.existe(device_id):
+        metrics.auth_failures_total.labels(motivo="no_reconocido").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="device_token no reconocido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if registro.esta_revocado(device_id):
         logger.warning("Request con dispositivo revocado: %s", device_id)
+        metrics.auth_failures_total.labels(motivo="revocado").inc()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dispositivo revocado.")
 
     registro.marcar_uso(device_id)
@@ -291,6 +471,7 @@ def _exigir_tasa_permitida(
     no estar autenticadas o venir de un dispositivo revocado.
     """
     if not limitador.permitir(device_id):
+        metrics.rate_limit_exceeded_total.labels(tipo="mensajes").inc()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Límite de mensajes por minuto excedido. Intenta de nuevo en breve.",
@@ -328,6 +509,126 @@ def _exigir_consentimiento(
             ),
         )
     return device_id
+
+
+# --- Helpers de observabilidad -------------------------------------------
+
+# Sesiones y transiciones de degradación viven en un objeto propio
+# (_estado_observabilidad.py): necesitan estado mutable y el proyecto no usa
+# ``global`` en ningún módulo. Ver ese archivo para el porqué de cada tope.
+#
+# Este es el estado por defecto del proceso. ``_lifespan`` lo reemplaza por
+# el de la app concreta, así que el objeto real es siempre el que está en
+# ``app.state.estado_obs`` — un contenedor de un elemento en vez de una
+# variable reasignable, para no necesitar ``global`` al cambiarlo.
+_ESTADO_OBS_DEFAULT = estado_observabilidad.ContenedorEstado()
+
+
+def _registrar_sesion(session_id: str) -> None:
+    """Marca una sesión como abierta y actualiza ``santisima_active_sessions``."""
+    _ESTADO_OBS_DEFAULT.get().registrar_sesion(session_id, time.monotonic())
+
+
+def _cerrar_sesion(session_id: str) -> None:
+    """Cierra una sesión, observando su duración (``santisima_session_duration_seconds``)."""
+    _ESTADO_OBS_DEFAULT.get().cerrar_sesion(session_id, time.monotonic())
+
+
+def _actualizar_estado_llm(degradado: bool) -> None:
+    """Publica el gauge de degradación y cuenta las entradas a degradación."""
+    _ESTADO_OBS_DEFAULT.get().actualizar_estado_llm(degradado)
+
+
+def _payload_salud(
+    settings: Settings,
+    api: APILaSantisima,
+    degradado: bool,
+    estado_purga: Optional[EstadoPurga],
+) -> dict:
+    """Cuerpo de ``GET /metrics/health``.
+
+    Extraído del endpoint (que solo orquesta) para no cruzar el límite de
+    sentencias que el proyecto se impone por función: la ruta HTTP se lee
+    como "leer estado, publicar gauges, devolver payload", y la construcción
+    del payload —que es la parte que crece cuando se suma un campo nuevo—
+    vive aparte.
+    """
+    backend = "postgres" if settings.usar_postgres else "sqlite"
+    filas_historial = _contar_filas_historial(api, backend)
+    if filas_historial is not None:
+        metrics.db_historial_filas.labels(backend=backend).set(filas_historial)
+
+    return {
+        "llm_adapter_status": "degraded" if degradado else "ok",
+        "db_backend": backend,
+        # Mismo dato que la métrica Prometheus ``santisima_db_connections_active``
+        # (ver infrastructure/metrics.py y el ``_conexion`` de
+        # PostgresConversationRepository): conexiones contra la BD en este
+        # instante. En sqlite siempre 0 — no hay servidor con el que abrir
+        # conexiones concurrentes (``sqlite3`` es un archivo, serializado por
+        # un lock del propio repositorio).
+        "db_connection_pool_active_connections": (
+            int(metrics.db_connections_active.labels(backend="postgres")._value.get())
+            if settings.usar_postgres
+            else 0
+        ),
+        "db_historial_filas": filas_historial,
+        "sesiones_activas": _ESTADO_OBS_DEFAULT.get().sesiones_activas,
+        "redis_rate_limit_enabled": settings.usar_redis_rate_limit,
+        "redis_connection_status": _estado_redis(settings),
+        "ultima_purga": estado_purga,
+    }
+
+
+def _contar_filas_historial(api: APILaSantisima, backend: str) -> Optional[int]:
+    """Filas del historial vía el repositorio, tolerando backends sin soporte.
+
+    Devuelve ``None`` (en vez de 0) cuando el repositorio no implementa
+    ``contar_filas`` — p. ej. ``ConversationRepositoryMemory`` en desarrollo,
+    o un doble de test. Cero y "no sé" son estados distintos: publicar 0
+    haría creer que la base está vacía, cuando en realidad no se consultó.
+    """
+    repositorio = api.caso_de_uso.repositorio
+    contar = getattr(repositorio, "contar_filas", None)
+    if contar is None:
+        return None
+    try:
+        return int(contar())
+    except Exception:  # noqa: BLE001 — métrica de diagnóstico, nunca debe tumbar el endpoint
+        logger.warning(
+            "No se pudo contar las filas del historial (backend=%s).", backend, exc_info=True
+        )
+        return None
+
+
+def _publicar_gauges_purga(settings: Settings) -> Optional[EstadoPurga]:
+    """Lee el resultado de la purga y publica sus gauges. Devuelve el estado.
+
+    La purga corre en OTRO proceso (systemd timer, cron o
+    ``docker-compose.purga.yml`` — ver docs/despliegue.md §7), así que no
+    puede tocar las métricas de este. El script deja el resultado en un
+    archivo JSON y aquí se traduce a gauges en cada scrape; si la purga deja
+    de correr, el timestamp simplemente deja de avanzar, y eso es lo que
+    dispara ``SantisimaPurgaRetencionAtrasada``.
+    """
+    try:
+        estado_purga = leer_estado(Path(settings.purga_estado_path))
+    except OSError:  # noqa: BLE001 — métrica de diagnóstico, nunca debe tumbar el endpoint
+        logger.warning("No se pudo leer el estado de purga.", exc_info=True)
+        return None
+    if estado_purga is not None:
+        metrics.purga_ultimo_exito_timestamp.set(estado_purga["timestamp"])
+        metrics.purga_ultimo_registros_borrados.set(estado_purga["registros_borrados"])
+    return estado_purga
+
+
+def _estado_redis(settings: Settings) -> str:
+    """PING al Redis del rate limiter compartido. Devuelve un estado legible.
+
+    Se delega en ``_estado_observabilidad.estado_redis`` (misma lógica,
+    módulo cohesionado con el resto de la observabilidad).
+    """
+    return estado_observabilidad.estado_redis(settings)
 
 
 # --- Schemas ---------------------------------------------------------------
@@ -372,33 +673,15 @@ class ErrorSalida(BaseModel):
 # --- Router ------------------------------------------------------------
 
 
-def _router() -> APIRouter:
-    router = APIRouter()
+def _registrar_rutas_privacidad(router: APIRouter) -> None:
+    """Registra los dos endpoints de aviso de privacidad en ``router``.
 
-    @router.get("/health", tags=["operación"])
-    def health() -> dict:
-        """Liveness: el proceso responde. No implica que el motor de IA esté sano."""
-        return {"status": "ok"}
-
-    @router.get("/health/ready", tags=["operación"])
-    def readiness(request: Request) -> JSONResponse:
-        """Readiness: refleja si el motor de IA está operando degradado.
-
-        Antes, un flow de CrewAI que fallaba al cargar quedaba en modo
-        fallback-solamente de forma silenciosa (solo visible en logs). Este
-        endpoint lo hace observable por un orquestador (Kubernetes, un
-        healthcheck de load balancer) para sacar la instancia de rotación
-        o alertar, en vez de servir tráfico degradado indefinidamente sin
-        que nadie se entere.
-        """
-        api: APILaSantisima = request.app.state.api
-        degradado = getattr(api.caso_de_uso.servicio_respuestas, "esta_degradado", False)
-        if degradado:
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content={"status": "degraded", "detail": "Motor de IA operando en modo fallback."},
-            )
-        return JSONResponse(content={"status": "ready"})
+    Extraído de ``_router()`` para mantener esa función bajo el límite de
+    sentencias que el proyecto se impone: ``_router()`` agrupa cinco familias
+    de endpoints (operación, privacidad, identidad, conversación,
+    administración) y el aviso de privacidad es la única que no depende de
+    ningún estado de la app — se lee de un archivo y de ``Settings``.
+    """
 
     @router.get("/privacidad", tags=["privacidad"])
     def aviso_privacidad() -> dict:
@@ -410,21 +693,17 @@ def _router() -> APIRouter:
         parsear Markdown.
         """
         settings = get_settings()
-        # "Se guardan cifrados" solo si SANTISIMA_CLAVE_CIFRADO está
-        # configurada de verdad (ver Settings.clave_cifrado): afirmarlo
-        # incondicionalmente sería decirle al usuario algo falso en un
-        # despliegue sin esa variable, justo sobre el dato que se le pide
-        # aceptar.
-        estado_cifrado = (
-            "Se guardan cifrados" if settings.clave_cifrado else "Se guardan SIN cifrar"
-        )
+        # "se cifran" solo si SANTISIMA_CLAVE_CIFRADO está configurada de
+        # verdad (ver Settings.clave_cifrado): afirmarlo incondicionalmente
+        # sería decirle al usuario algo falso en un despliegue sin esa
+        # variable, justo sobre el dato que se le pide aceptar.
+        estado_cifrado = "se cifran" if settings.clave_cifrado else "se guardan SIN cifrar"
         return {
             "resumen": (
                 "Tus mensajes pueden reflejar creencias y estado emocional. "
-                f"{estado_cifrado}, se envían a un proveedor de IA (DeepInfra) "
-                "para generar respuesta, y se conservan por un periodo limitado "
-                "(ver retención). Puedes borrar tu conversación en cualquier "
-                "momento."
+                f"{estado_cifrado}, se envían a DeepInfra (IA) "
+                "para responder, y se conservan por tiempo limitado. Puedes "
+                "borrar tu conversación cuando quieras."
             ),
             "version": settings.aviso_privacidad_version,
             "retencion_dias": settings.retencion_dias,
@@ -453,6 +732,93 @@ def _router() -> APIRouter:
                 detail="Aviso de privacidad no disponible en este servidor.",
             )
         return PlainTextResponse(content=contenido, media_type="text/markdown; charset=utf-8")
+
+
+def _router() -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/", include_in_schema=False)
+    def frontend() -> FileResponse:
+        """Sirve el frontend en el mismo origen que la API.
+
+        Con la página y ``POST /api/v1/...`` en el mismo host:puerto, el
+        navegador nunca dispara una petición cross-origin — CORS deja de
+        aplicar y ``SANTISIMA_CORS_ORIGINS`` no necesita saber nada sobre
+        cómo se sirve el HTML. Sigue existiendo el otro camino (servir el
+        HTML desde ``python -m http.server`` en otro puerto, permitido vía
+        CORS); este es el que no puede romperse abriendo el archivo con
+        doble clic.
+        """
+        if not _RUTA_FRONTEND.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Frontend no disponible en este despliegue.",
+            )
+        return FileResponse(_RUTA_FRONTEND, media_type="text/html; charset=utf-8")
+
+    @router.get("/health", tags=["operación"])
+    def health() -> dict:
+        """Liveness: el proceso responde. No implica que el motor de IA esté sano."""
+        return {"status": "ok"}
+
+    @router.get("/health/ready", tags=["operación"])
+    def readiness(request: Request) -> JSONResponse:
+        """Readiness: refleja si el motor de IA está operando degradado.
+
+        Antes, un flow de CrewAI que fallaba al cargar quedaba en modo
+        fallback-solamente de forma silenciosa (solo visible en logs). Este
+        endpoint lo hace observable por un orquestador (Kubernetes, un
+        healthcheck de load balancer) para sacar la instancia de rotación
+        o alertar, en vez de servir tráfico degradado indefinidamente sin
+        que nadie se entere.
+        """
+        api: APILaSantisima = request.app.state.api
+        degradado = getattr(api.caso_de_uso.servicio_respuestas, "esta_degradado", False)
+        # ``_actualizar_estado_llm`` (y no ``metrics.llm_degradado.set``
+        # directo) para que este endpoint — que es el que un orquestador
+        # llama cada pocos segundos — también cuente las transiciones a
+        # degradado en ``santisima_llm_degradation_events_total``.
+        _actualizar_estado_llm(degradado)
+        if degradado:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"status": "degraded", "detail": "Motor de IA operando en modo fallback."},
+            )
+        return JSONResponse(content={"status": "ready"})
+
+    @router.get("/metrics", tags=["operación"], include_in_schema=False)
+    def metricas_prometheus() -> PlainTextResponse:
+        """Métricas en formato de exposición de Prometheus (``text/plain``).
+
+        Sin autenticación a propósito: es el mismo criterio que ``/health``
+        — un scraper Prometheus/CloudWatch Agent no tiene por qué portar un
+        device_token, y estas métricas no exponen contenido de
+        conversaciones ni identificadores de usuario (ver
+        ``infrastructure.metrics``: solo contadores agregados). Si el
+        despliegue lo requiere, restringir el acceso es responsabilidad del
+        proxy/red (no exponer el puerto a internet), no de este endpoint.
+        """
+        return PlainTextResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    @router.get("/metrics/health", tags=["operación"])
+    def salud_detallada(request: Request) -> dict:
+        """Resumen de salud en JSON, pensado para un dashboard/runbook
+        humano (a diferencia de ``/metrics``, pensado para un scraper).
+
+        Ver docs/runbooks/HEALTH_CHECKS.md para qué significa cada campo.
+        """
+        settings: Settings = request.app.state.settings
+        api: APILaSantisima = request.app.state.api
+        degradado = getattr(api.caso_de_uso.servicio_respuestas, "esta_degradado", False)
+        estado_purga = _publicar_gauges_purga(settings)
+        # Contadores de degradación: se derivan del estado, no del adapter,
+        # que solo expone su estado ACTUAL (``esta_degradado``) — la
+        # transición 0->1 se detecta comparando con el último valor
+        # publicado. Ver EstadoObservabilidad.actualizar_estado_llm.
+        _actualizar_estado_llm(degradado)
+        return _payload_salud(settings, api, degradado, estado_purga)
+
+    _registrar_rutas_privacidad(router)
 
     @router.post(
         "/api/v1/dispositivos",
@@ -510,7 +876,9 @@ def _router() -> APIRouter:
         el session_id de otro creyente.
         """
         settings: Settings = request.app.state.settings
-        return SesionCreada(session_id=emitir_session_id(device_id, settings))
+        session_id = emitir_session_id(device_id, settings)
+        _registrar_sesion(session_id)
+        return SesionCreada(session_id=session_id)
 
     def _validar_propiedad_sesion(session_id: str, device_id: str, settings: Settings) -> None:
         if not validar_session_id(session_id, device_id, settings):
@@ -540,6 +908,7 @@ def _router() -> APIRouter:
         _validar_propiedad_sesion(entrada.session_id, device_id, settings)
         api: APILaSantisima = request.app.state.api
         respuesta = api.responder(entrada.mensaje, session_id=entrada.session_id)
+        metrics.messages_total.inc()
         return RespuestaSalida(respuesta=respuesta.contenido, emocion=respuesta.emocion)
 
     @router.post(
@@ -560,6 +929,16 @@ def _router() -> APIRouter:
         _validar_propiedad_sesion(entrada.session_id, device_id, settings)
         api: APILaSantisima = request.app.state.api
 
+        def _codificar_evento_sse(chunk: str) -> str:
+            # Un valor `data:` multilínea debe llevar el prefijo en CADA
+            # línea (spec SSE): un chunk que contenga "\n\n" (p. ej. un
+            # salto de párrafo del LLM, o el aviso de corte de conexión de
+            # más abajo) rompe el framing si se manda como `f"data:
+            # {chunk}\n\n"` — el "\n\n" interno cierra el bloque a mitad de
+            # camino y el resto llega sin prefijo `data:`, así que el
+            # parser del cliente lo descarta en silencio.
+            return "".join(f"data: {linea}\n" for linea in chunk.split("\n")) + "\n"
+
         def _generar() -> Iterator[str]:
             generador = api.responder_stream(entrada.mensaje, session_id=entrada.session_id)
             emocion: Optional[str] = None
@@ -569,7 +948,8 @@ def _router() -> APIRouter:
                 except StopIteration as fin:
                     emocion = fin.value
                     break
-                yield f"data: {chunk}\n\n"
+                yield _codificar_evento_sse(chunk)
+            metrics.messages_total.inc()
             yield f"event: done\ndata: {json.dumps({'emocion': emocion})}\n\n"
 
         return StreamingResponse(_generar(), media_type="text/event-stream")
@@ -584,6 +964,7 @@ def _router() -> APIRouter:
         _validar_propiedad_sesion(session_id, device_id, settings)
         api: APILaSantisima = request.app.state.api
         api.reiniciar_sesion(session_id)
+        _cerrar_sesion(session_id)
 
     @router.post(
         "/admin/dispositivos/{device_id}/revocar",
@@ -601,6 +982,7 @@ def _router() -> APIRouter:
         """
         registro: RegistroDispositivos = request.app.state.registro_dispositivos
         registro.revocar(device_id)
+        metrics.device_revocations_total.inc()
 
     return router
 

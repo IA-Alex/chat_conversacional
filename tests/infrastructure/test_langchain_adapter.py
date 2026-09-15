@@ -52,6 +52,7 @@ def _crear_adapter(**chains) -> LangChainAdapter:
     )
     adapter._chain_vacia = chains.get("vacia", Mock())
     adapter._chain_incompleta = chains.get("incompleta", Mock())
+    adapter._chain_anuncio = chains.get("anuncio", Mock())
     adapter._chain_principal = chains.get(
         "principal",
         Mock(invoke=Mock(return_value="La La Santísima Muerte responde con amor y calma.")),
@@ -75,6 +76,24 @@ class TestClasificacionYEnrutado:
         assert respuesta.contenido == "La La Santísima Muerte responde con amor y calma."
         assert respuesta.idioma == "es"
         assert respuesta.emocion == "gratitud"
+
+    def test_desesperacion_no_recibe_enrutado_especial(self):
+        """'desesperacion' pasa por la cadena principal como cualquier otra
+        emoción — no debe desviarse a ninguna respuesta fija (ver
+        gobernanza-ia.md §4: el enrutado de crisis se retiró
+        deliberadamente por decisión del titular del proyecto)."""
+        adapter = _crear_adapter(
+            clasificador=Mock(
+                invoke=Mock(return_value="Intencion: valida | Emocion: desesperacion")
+            ),
+        )
+        mensaje = MensajeCreyente("No sé cómo voy a pagar la renta", session_id="s1")
+
+        respuesta = adapter.responder_mensaje(mensaje)
+
+        adapter._chain_principal.invoke.assert_called_once()
+        assert respuesta.contenido == "La La Santísima Muerte responde con amor y calma."
+        assert respuesta.emocion == "desesperacion"
 
     def test_mensaje_vacio_usa_respuesta_corta_y_no_actualiza_memoria(self):
         chain_vacia = Mock(invoke=Mock(return_value="Comparte lo que llevas en el corazón."))
@@ -105,6 +124,26 @@ class TestClasificacionYEnrutado:
 
         chain_incompleta.invoke.assert_called_once()
         assert respuesta.contenido == "Tómate tu tiempo, aquí te escucho."
+
+    def test_mensaje_anuncio_usa_respuesta_corta_y_no_actualiza_memoria(self):
+        """Un mensaje que anuncia intención de compartir ('quiero contarte
+        algo muy personal') sin contenido aún no debe disparar la respuesta
+        larga de la cadena principal: se responde con una frase breve que
+        invita a continuar, igual que vacío/incompleto."""
+        chain_anuncio = Mock(invoke=Mock(return_value="Te escucho, cuéntame."))
+        adapter = _crear_adapter(
+            clasificador=Mock(invoke=Mock(return_value="Intencion: anuncio | Emocion: devocion")),
+            anuncio=chain_anuncio,
+        )
+        mensaje = MensajeCreyente("Quiero contarte algo muy personal", session_id="s1")
+        callback = Mock()
+
+        respuesta = adapter.responder_mensaje(mensaje, on_resumen_actualizado=callback)
+
+        chain_anuncio.invoke.assert_called_once()
+        adapter._chain_principal.invoke.assert_not_called()
+        assert respuesta.contenido == "Te escucho, cuéntame."
+        callback.assert_not_called()
 
     def test_clasificacion_con_formato_inesperado_degrada_a_valida(self):
         """Si el LLM clasificador no sigue el formato, no se bloquea la

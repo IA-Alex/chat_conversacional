@@ -37,6 +37,31 @@ class _CasosRegistroDispositivos:
         registro = self.crear_registro()
         assert registro.esta_revocado("device-que-nunca-existio") is True
 
+    def test_dispositivo_registrado_existe(self):
+        registro = self.crear_registro()
+        device_id = registro.registrar()
+        assert registro.existe(device_id) is True
+
+    def test_device_id_desconocido_no_existe(self):
+        """Distinto de esta_revocado (que trata 'desconocido' como
+        'revocado' por seguridad): existe() debe decir la verdad — esto es
+        lo que permite a http_api.py distinguir un token huérfano (401,
+        autocorregible) de una revocación real (403, nunca autocorregible).
+        Ver verificar_dispositivo en http_api.py."""
+        registro = self.crear_registro()
+        assert registro.existe("device-que-nunca-existio") is False
+
+    def test_dispositivo_revocado_sigue_existiendo(self):
+        """Revocar no borra el registro (ver docstring de `revocar`): un
+        dispositivo revocado debe seguir siendo 'existente' para que
+        verificar_dispositivo lo reporte como 403 revocado, no como 401
+        desconocido."""
+        registro = self.crear_registro()
+        device_id = registro.registrar()
+        registro.revocar(device_id)
+        assert registro.existe(device_id) is True
+        assert registro.esta_revocado(device_id) is True
+
     def test_revocar_bloquea_el_dispositivo(self):
         registro = self.crear_registro()
         device_id = registro.registrar()
