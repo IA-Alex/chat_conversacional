@@ -8,6 +8,7 @@ práctica pese a estar completamente implementado y testeado de forma
 aislada.
 """
 
+import inspect
 import os
 
 from la_santisima_conversacional import crear_servicio, APILaSantisima
@@ -15,6 +16,21 @@ from la_santisima_conversacional.infrastructure.repositories import (
     ConversationRepositoryMemory,
     SQLiteConversationRepository,
 )
+
+
+def test_use_langchain_default_no_se_revierte():
+    """Mismo hallazgo que `test_config.TestSettings
+    .test_use_langchain_default_no_se_revierte`: mientras CrewAIAdapter
+    quede degradado (ver docstring de ese test y `docs/compliance/
+    gobernanza-ia.md` §4), el default de `use_langchain` en la firma de
+    `crear_servicio` debe seguir siendo True."""
+    firma = inspect.signature(crear_servicio)
+    default_use_langchain = firma.parameters["use_langchain"].default
+    assert default_use_langchain is True, (
+        "crear_servicio(use_langchain=...) volvió a tener default False: "
+        "mismo hallazgo que Settings.use_langchain, ver docstring de "
+        "este test."
+    )
 
 
 def test_por_defecto_usa_repositorio_en_memoria():

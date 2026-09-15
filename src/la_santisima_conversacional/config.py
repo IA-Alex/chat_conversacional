@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     """Endpoint compatible con la API de OpenAI que expone DeepInfra. Rara
     vez necesita cambiarse; existe como campo (y no una constante) para
     poder apuntar a otra región/proxy sin tocar código."""
-    use_langchain: bool = False
+    use_langchain: bool = True
     modelo_chat: str = "openai/google/gemma-4-31B-it-turbo"
     """Genera la respuesta devocional principal. Variante "turbo" de Gemma
     4 31B: mismos pesos que la variante estándar, optimizada para latencia

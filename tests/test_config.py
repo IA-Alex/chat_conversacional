@@ -115,9 +115,28 @@ class TestSettings:
         """SANTISIMA_ENTORNO=production con debug=true y confirmación pasa."""
         monkeypatch.setenv("SANTISIMA_ENTORNO", "production")
         settings = Settings(
-            deepinfra_api_key="sk-test", 
-            debug=True, 
+            deepinfra_api_key="sk-test",
+            debug=True,
             confirmo_debug_en_prod=True
         )
         assert settings.debug is True
         assert settings.confirmo_debug_en_prod is True
+
+    def test_use_langchain_default_no_se_revierte(self, monkeypatch):
+        """`CrewAIAdapter._configurar_flow()` carga el flow declarativo con
+        `Flow.from_file(...)`, método que no existe en la versión de
+        `crewai` instalada (ver `infrastructure/crewai_adapter.py`): la
+        carga falla silenciosamente y el adaptador queda degradado
+        permanentemente a `_crear_flow_basico()`, sin enrutamiento de
+        intención/emoción, por lo que la detección de crisis queda
+        inoperante en ese motor (ver `docs/compliance/gobernanza-ia.md`
+        §4). Mientras esa incompatibilidad no se corrija, el default de
+        `Settings.use_langchain` debe seguir siendo True."""
+        monkeypatch.setenv("DEEPINFRA_API_KEY", "sk-test")
+        settings = Settings(_env_file=None)
+        assert settings.use_langchain is True, (
+            "Settings.use_langchain volvió a False: reintroduce el hallazgo "
+            "documentado (CrewAIAdapter queda degradado, sin detección de "
+            "crisis) en el motor activo por defecto. Ver docs/compliance/"
+            "gobernanza-ia.md §4."
+        )

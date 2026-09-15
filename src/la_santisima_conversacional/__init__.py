@@ -28,7 +28,7 @@ def __getattr__(name: str) -> object:
 
 def crear_servicio(
     flow_path: Optional[str] = None,
-    use_langchain: bool = False,
+    use_langchain: bool = True,
     langchain_model: str = "openai/google/gemma-4-31B-it-turbo",
     modelo_chat: str = "openai/google/gemma-4-31B-it-turbo",
     modelo_resumen: str = "openai/google/gemma-4-26B-A4B-it",
