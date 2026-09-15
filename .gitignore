@@ -1,0 +1,28 @@
+.env
+.venv/
+__pycache__/
+.crewai/
+output/
+
+# Bases de datos locales: contienen device_id, consentimiento y (si no hay
+# SANTISIMA_CLAVE_CIFRADO configurada) contenido conversacional en texto
+# plano. Nunca deben versionarse (ver docs/despliegue.md §7).
+*.db
+*.db-wal
+*.db-shm
+
+# Artefactos de test/lint/build que no deben versionarse.
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Assets de frontend/referencia visual (imágenes, video de referencia de
+# la deidad, etc.): no pertenecen al repositorio del backend.
+deidad_1.jpeg
+dea.mp4
+propuesta_index/
+propuesta_index.tar.gz

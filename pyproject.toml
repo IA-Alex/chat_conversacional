@@ -1,0 +1,81 @@
+[project]
+name = "la_santisima_conversacional"
+version = "0.1.0"
+description = "la_santisima_conversacional: motor CrewAI (default) o LangChain, intercambiables"
+authors = [{ name = "La Santísima Team", email = "team@lasantisima.dev" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "langchain>=0.1.0",
+    "langchain-openai>=0.0.1",  # Para integración con GPT
+    "langchain-core>=0.1.0",   # Componentes esenciales
+    "fastapi>=0.110.0",         # Backend HTTP (presentation/http_api.py)
+    "uvicorn[standard]>=0.29.0", # Servidor ASGI
+    "pydantic-settings>=2.2.0", # Configuración centralizada (config.py)
+    "cryptography>=42.0.0"      # Cifrado en reposo del historial (SQLite)
+]
+# Opcional: Mantener crewai como dependencia opcional
+[project.optional-dependencies]
+crewai = ["crewai[file-processing,litellm,tools]>=1.15.11"]
+# Backends para escalar a múltiples instancias del backend (apagados por
+# defecto vía Settings.usar_postgres / usar_redis_rate_limit). Ver README
+# "Escalar a múltiples instancias".
+postgres = ["psycopg[binary]>=3.1.0"]
+redis = ["redis>=5.0.0"]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.0.0",
+    "httpx>=0.27.0",
+    "psycopg[binary]>=3.1.0",
+    "redis>=5.0.0"
+]
+lint = [
+    "pylint>=3.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "types-PyYAML>=6.0.0"
+]
+docs = [
+    "mkdocs>=1.0.0",
+    "mkdocs-material>=9.0.0",
+    "plantuml-markdown>=3.0.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Black solo lee configuración de pyproject.toml (o de --config explícito).
+# Este bloque vivía en un archivo suelto llamado `.black`, un nombre que la
+# herramienta no reconoce en absoluto: el hook de pre-commit lo ignoraba
+# silenciosamente y Black corría con sus defaults (line-length=88) en vez
+# de line-length=100.
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.tox
+  | \.venv
+  | _build
+  | build
+  | dist
+)/
+'''
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/la_santisima_conversacional"]
+
+[tool.crewai]
+type = "flow"
+definition = "src/la_santisima_conversacional/infrastructure/flow.json"
+project_id = "d6f12c16-1338-435a-b222-f3b714d96efd"
+
+[tool.uv]
+override-dependencies = ["litellm<=1.82.6"]

@@ -1,0 +1,16 @@
+[Unit]
+Description=Dispara santisima-purga-retencion.service diariamente (política de retención, ver docs/compliance/politica-retencion.md)
+
+[Timer]
+# 03:00 hora local del servidor. Persistent=true: si el servidor estuvo
+# apagado a esa hora, corre en cuanto vuelve a arrancar, en vez de esperar
+# silenciosamente al día siguiente (una purga que nunca corre durante días
+# es exactamente el incumplimiento que esta política busca evitar).
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+# Evita que dos purgas se superpongan si el arranque coincide con la hora
+# programada del día.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

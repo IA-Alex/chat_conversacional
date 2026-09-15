@@ -1,0 +1,27 @@
+[MASTER]
+load-plugins=pylint.extensions.bad_builtin
+
+[MESSAGES CONTROL]
+disable=
+    missing-docstring,
+    too-few-public-methods,
+    protected-access,
+    duplicate-code
+
+[FORMAT]
+max-line-length=100
+
+[DESIGN]
+max-args=6
+max-locals=15
+max-returns=6
+max-branches=15
+max-statements=50
+max-parents=7
+max-attributes=15
+
+[VARIABLES]
+dummy-variables-rgx=^(_+|dummy_).*$
+
+[TYPECHECK]
+ignored-modules=crewai

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ciber-Blindaje</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:      #0a0713;
+    --surface:     #130c20;
+    --surface-2:   #1b1229;
+    --line:        rgba(237,230,220,0.10);
+    --bone:        #ece4d8;
+    --bone-dim:    #ab9fb2;
+    --candle-purple: #8a3ffc;
+    --candle-green:  #1fdb8c;
+    --candle-red:    #e8284f;
+    --candle-gold:   #e3b34c;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ground);
+    color:var(--bone);
+    font-family:'Manrope',system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ================= MESH — organismo vivo ================= */
+  .mesh{
+    position:fixed; inset:0; z-index:0;
+    overflow:hidden;
+    filter:blur(70px) saturate(1.15);
+  }
+  .orb{
+    position:absolute;
+    border-radius:50%;
+    mix-blend-mode:screen;
+    opacity:.75;
+    will-change:transform,opacity;
+    animation-timing-function:cubic-bezier(.37,.14,.2,.87);
+    animation-iteration-count:infinite;
+    animation-direction:alternate;
+  }
+  /* pulso compartido: todas laten en el mismo periodo base (7s),
+     con retardo distinto por orbe -> late como un solo organismo
+     con varias extremidades, no como piezas separadas */
+  .orb{ animation-duration:7s; }
+  .orb-verde{
+    width:58vw; height:58vw; top:-14vw; left:-12vw;
+    background:var(--candle-green);
+    animation-name:latirA; animation-delay:0s;
+  }
+  .orb-rojo{
+    width:52vw; height:52vw; bottom:-16vw; right:-10vw;
+    background:var(--candle-red);
+    animation-name:latirB; animation-delay:-2.3s;
+  }
+  .orb-morado{
+    width:50vw; height:50vw; top:18vw; left:22vw;
+    background:var(--candle-purple);
+    animation-name:latirC; animation-delay:-4.6s;
+  }
+  .orb-oro{
+    width:36vw; height:36vw; top:-6vw; right:12vw;
+    background:var(--candle-gold);
+    opacity:.45;
+    animation-name:latirD; animation-delay:-1.1s;
+  }
+
+  @keyframes latirA{
+    0%{ transform:translate(0,0) scale(1); }
+    50%{ transform:translate(20vw,12vh) scale(1.14); }
+    100%{ transform:translate(34vw,26vh) scale(.92); }
+  }
+  @keyframes latirB{
+    0%{ transform:translate(0,0) scale(1); }
+    50%{ transform:translate(-18vw,-14vh) scale(1.18); }
+    100%{ transform:translate(-40vw,-30vh) scale(.96); }
+  }
+  @keyframes latirC{
+    0%{ transform:translate(0,0) scale(1); }
+    50%{ transform:translate(12vw,-20vh) scale(.9); }
+    100%{ transform:translate(28vw,-8vh) scale(1.22); }
+  }
+  @keyframes latirD{
+    0%{ transform:translate(0,0) scale(1); }
+    50%{ transform:translate(-12vw,24vh) scale(1.1); }
+    100%{ transform:translate(2vw,40vh) scale(.95); }
+  }
+
+  /* surge: se dispara al enviar un mensaje -> el organismo
+     reacciona a la conversación con una inhalación breve */
+  .mesh.surge .orb{ animation-duration:1.1s; }
+
+  .grano{
+    position:fixed; inset:0; z-index:1; pointer-events:none;
+    opacity:.05; mix-blend-mode:overlay;
+    background-image:radial-gradient(circle,#fff 1px,transparent 1px);
+    background-size:3px 3px;
+  }
+
+  /* ================= VENTANA CONVERSACIONAL ================= */
+  .app{
+    position:relative; z-index:2;
+    display:flex; flex-direction:column;
+    width:100%; height:100vh; height:100dvh;
+    max-width:560px; margin:0 auto;
+  }
+
+  /* -------- barra de estado -------- */
+  .estado{
+    flex:0 0 auto;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px;
+    padding:16px 20px 10px;
+  }
+  .estado .marca{
+    display:flex; align-items:center; gap:10px;
+  }
+  .estado .marca .cirio{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--candle-green);
+    box-shadow:0 0 8px 2px var(--candle-green);
+    animation:cirio 7s ease-in-out infinite alternate;
+  }
+  @keyframes cirio{ 0%{opacity:.5;} 50%{opacity:1;} 100%{opacity:.6;} }
+  .estado .marca span{
+    font-family:'Cinzel',serif; font-weight:600;
+    font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--bone);
+  }
+  .estado .sesion{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; letter-spacing:.04em;
+    color:var(--bone-dim);
+  }
+
+  /* -------- nicho / retrato -------- */
+  .nicho-wrap{
+    flex:0 0 auto;
+    display:flex; justify-content:center;
+    padding:6px 0 14px;
+  }
+  .nicho{
+    position:relative;
+    width:min(46vw,220px); height:min(46vw,220px);
+  }
+  .aura{
+    position:absolute; inset:-18%;
+    border-radius:50%;
+    background:radial-gradient(circle,rgba(227,179,76,.35) 0%,rgba(138,63,252,.18) 45%,transparent 72%);
+    animation:latirA 7s cubic-bezier(.37,.14,.2,.87) infinite alternate;
+    animation-duration:7s;
+    filter:blur(4px);
+  }
+  .nicho.surge .aura{ animation-duration:1.1s; }
+  .marco{
+    position:absolute; inset:0;
+    border-radius:50%;
+    border:1px solid rgba(227,179,76,.55);
+    box-shadow:
+      0 0 0 6px rgba(227,179,76,.06),
+      inset 0 0 30px rgba(0,0,0,.55);
+    overflow:hidden;
+    background:
+      radial-gradient(circle at 50% 30%,#241733,#0d0715 70%);
+  }
+  .marco img{
+    width:100%; height:100%; object-fit:cover;
+    display:block;
+  }
+  /* silueta de reserva: se muestra mientras no exista retrato real */
+  .silueta{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    opacity:.5;
+  }
+  .silueta svg{ width:58%; height:58%; }
+
+  /* -------- conversación -------- */
+  .hilo{
+    flex:1 1 auto;
+    overflow-y:auto;
+    padding:4px 22px 18px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .burbuja{
+    max-width:82%;
+    padding:11px 15px;
+    border-radius:16px;
+    font-size:14.5px; line-height:1.5;
+  }
+  .burbuja.ella{
+    align-self:flex-start;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-top-left-radius:4px;
+    color:var(--bone);
+  }
+  .burbuja.ella .firma{
+    display:block; font-family:'Cinzel',serif; font-size:10px;
+    letter-spacing:.12em; text-transform:uppercase;
+    color:var(--candle-gold); margin-bottom:4px;
+  }
+  .burbuja.yo{
+    align-self:flex-end;
+    background:linear-gradient(155deg,rgba(138,63,252,.28),rgba(232,40,79,.16));
+    border:1px solid rgba(138,63,252,.35);
+    border-top-right-radius:4px;
+    color:var(--bone);
+  }
+  .marca-hora{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px; color:var(--bone-dim);
+    margin-top:4px;
+  }
+  .burbuja.yo + .marca-hora{ align-self:flex-end; }
+
+  /* -------- barra de entrada -------- */
+  .barra{
+    flex:0 0 auto;
+    padding:12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  .campo{
+    display:flex; align-items:center; gap:8px;
+    background:rgba(19,12,32,.72);
+    backdrop-filter:blur(18px);
+    border:1px solid var(--line);
+    border-radius:22px;
+    padding:6px 8px 6px 18px;
+    transition:border-color .25s, box-shadow .25s;
+  }
+  .campo:focus-within{
+    border-color:rgba(227,179,76,.55);
+    box-shadow:0 0 0 3px rgba(227,179,76,.10);
+  }
+  .campo input{
+    flex:1 1 auto;
+    background:transparent; border:0; outline:0;
+    color:var(--bone);
+    font-family:'Manrope',sans-serif;
+    font-size:14.5px;
+    padding:8px 0;
+  }
+  .campo input::placeholder{ color:var(--bone-dim); }
+  .icono-btn{
+    flex:0 0 auto;
+    width:36px; height:36px; border-radius:50%;
+    border:0; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; color:var(--bone-dim);
+    transition:color .2s, background .2s;
+  }
+  .icono-btn:hover{ color:var(--bone); background:var(--line); }
+  .enviar{
+    background:linear-gradient(155deg,var(--candle-gold),var(--candle-red));
+    color:#160a12;
+  }
+  .enviar:hover{ filter:brightness(1.08); background:linear-gradient(155deg,var(--candle-gold),var(--candle-red)); color:#160a12; }
+  .icono-btn svg{ width:17px; height:17px; }
+  .leyenda{
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9.5px; letter-spacing:.03em;
+    color:var(--bone-dim);
+    margin-top:8px;
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    .orb,.aura,.cirio{ animation:none !important; }
+  }
+
+  @media (max-width:400px){
+    .nicho{ width:38vw; height:38vw; }
+    .burbuja{ max-width:90%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="mesh" id="mesh">
+  <div class="orb orb-verde"></div>
+  <div class="orb orb-rojo"></div>
+  <div class="orb orb-morado"></div>
+  <div class="orb orb-oro"></div>
+</div>
+<div class="grano"></div>
+
+<div class="app">
+
+  <header class="estado">
+    <div class="marca">
+      <span class="cirio"></span>
+      <span>Ciber-Blindaje</span>
+    </div>
+    <div class="sesion" id="sesion">MANTO · #7f3a-e1</div>
+  </header>
+
+  <div class="nicho-wrap">
+    <div class="nicho" id="nicho">
+      <div class="aura"></div>
+      <div class="marco">
+        <!-- Coloca aquí tu imagen hiperrealista, p.ej.: -->
+        <!-- <img src="retrato-santa-muerte.jpg" alt="Retrato de la Santísima Muerte"
+              onerror="this.remove()"> -->
+        <div class="silueta">
+          <svg viewBox="0 0 100 100" fill="none" stroke="#e3b34c" stroke-width="1.2">
+            <path d="M50 8c-6 6-9 14-9 22 0 5 2 8 5 10-6 2-11 8-11 15v6h30v-6c0-7-5-13-11-15 3-2 5-5 5-10 0-8-3-16-9-22z" stroke-opacity=".8"/>
+            <circle cx="43" cy="30" r="2.6" fill="#0d0715" stroke-opacity=".8"/>
+            <circle cx="57" cy="30" r="2.6" fill="#0d0715" stroke-opacity=".8"/>
+            <path d="M46 40h8" stroke-opacity=".8"/>
+            <path d="M18 92c4-22 14-31 32-31s28 9 32 31" stroke-opacity=".55"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="hilo" id="hilo">
+    <div>
+      <div class="burbuja ella">
+        <span class="firma">Santa Muerte</span>
+        Hijo mío, tu manto ya está tendido. Cuéntame qué te aqueja esta noche y lo veremos bajo mi luz.
+      </div>
+      <div class="marca-hora">23:41</div>
+    </div>
+    <div style="align-self:flex-end;">
+      <div class="burbuja yo">
+        Niña Blanca, protégeme del mal de ojo antes de salir a trabajar.
+      </div>
+      <div class="marca-hora">23:42</div>
+    </div>
+    <div>
+      <div class="burbuja ella">
+        <span class="firma">Santa Muerte</span>
+        Está hecho. Lleva mi nombre en el pecho y camina sin mirar atrás — el blindaje ya cubre tu paso.
+      </div>
+      <div class="marca-hora">23:42</div>
+    </div>
+  </main>
+
+  <div class="barra">
+    <form class="campo" id="formulario">
+      <input id="entrada" type="text" placeholder="Escribe tu petición…" autocomplete="off">
+      <button type="button" class="icono-btn" aria-label="Adjuntar vela">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M12 3v11m0 0a4 4 0 1 0 4 4"/>
+        </svg>
+      </button>
+      <button type="submit" class="icono-btn enviar" aria-label="Enviar petición">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12l16-8-6 8 6 8-16-8z"/>
+        </svg>
+      </button>
+    </form>
+    <div class="leyenda">EL MANTO ESCUCHA · CIFRADO EXTREMO A EXTREMO</div>
+  </div>
+
+</div>
+
+<script>
+  // El organismo late siempre; al enviar un mensaje, "inhala" con fuerza
+  // para sincronizar el movimiento del mesh con la conversación real.
+  const mesh = document.getElementById('mesh');
+  const nicho = document.getElementById('nicho');
+  const formulario = document.getElementById('formulario');
+  const entrada = document.getElementById('entrada');
+  const hilo = document.getElementById('hilo');
+
+  function pulsoDeConversacion(){
+    mesh.classList.add('surge');
+    nicho.classList.add('surge');
+    setTimeout(() => {
+      mesh.classList.remove('surge');
+      nicho.classList.remove('surge');
+    }, 1300);
+  }
+
+  formulario.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const texto = entrada.value.trim();
+    if (!texto) return;
+
+    const grupo = document.createElement('div');
+    grupo.style.alignSelf = 'flex-end';
+    grupo.innerHTML = `<div class="burbuja yo"></div><div class="marca-hora"></div>`;
+    grupo.querySelector('.burbuja').textContent = texto;
+    grupo.querySelector('.marca-hora').textContent =
+      new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+    hilo.appendChild(grupo);
+    hilo.scrollTop = hilo.scrollHeight;
+
+    entrada.value = '';
+    pulsoDeConversacion();
+  });
+</script>
+</body>
+</html>

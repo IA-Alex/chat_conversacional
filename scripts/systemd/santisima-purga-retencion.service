@@ -1,0 +1,26 @@
+[Unit]
+Description=La Santísima Muerte — purga de retención (scripts/purgar_retencion.py)
+# No es un servicio de larga duración: lo dispara el .timer asociado, corre
+# una vez y termina. Documentado junto con el timer en
+# docs/despliegue.md §7 y docs/compliance/politica-retencion.md.
+After=network.target
+
+[Service]
+Type=oneshot
+User=santisima
+Group=santisima
+WorkingDirectory=/home/santisima/chat_conversacional
+EnvironmentFile=/home/santisima/chat_conversacional/.env
+ExecStart=/home/santisima/chat_conversacional/.venv/bin/python scripts/purgar_retencion.py
+
+# Mismo hardening que santisima.service (ver docs/despliegue.md §4): el
+# proceso solo necesita leer/escribir el .db del proyecto, nada más.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/santisima/chat_conversacional
+PrivateTmp=true
+
+# Salida visible con `journalctl -u santisima-purga-retencion.service`.
+StandardOutput=journal
+StandardError=journal
