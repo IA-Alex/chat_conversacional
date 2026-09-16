@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Detecta puerto ocupado y sugiere alternativa
+# Detecta puerto ocupado y busca automáticamente uno libre
 check_port_available() {
     local port=$1
     # intenta conectar a localhost:puerto; si falla, está libre
@@ -24,11 +24,23 @@ check_port_available() {
 }
 
 PORT="${PORT:-8000}"
+REQUESTED_PORT="$PORT"
+
+# Si el puerto pedido está ocupado, busca el siguiente libre (hasta +20)
 if ! check_port_available "$PORT"; then
-    echo "❌ Puerto $PORT ya está ocupado." >&2
-    echo "Prueba:" >&2
-    echo "  PORT=8080 ./start.sh" >&2
-    exit 1
+    ORIGINAL_PORT="$PORT"
+    for offset in {1..20}; do
+        PORT=$((ORIGINAL_PORT + offset))
+        if check_port_available "$PORT"; then
+            echo "⚠️  Puerto $ORIGINAL_PORT ocupado, usando $PORT en su lugar" >&2
+            break
+        fi
+    done
+    if [[ $PORT -eq $((ORIGINAL_PORT + 20)) ]] && ! check_port_available "$PORT"; then
+        echo "❌ Puertos $ORIGINAL_PORT-$PORT todos ocupados. Intenta:" >&2
+        echo "  PORT=9000 ./start.sh" >&2
+        exit 1
+    fi
 fi
 
 if [[ "${1:-}" == "--docker" ]]; then
