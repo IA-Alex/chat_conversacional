@@ -76,6 +76,16 @@ _RUTA_AVISO_PRIVACIDAD = Path(__file__).resolve().parents[3] / "docs" / "privaci
 # se monta el repo como estático, que expondría .env y las bases sqlite.
 _RUTA_FRONTEND = Path(__file__).resolve().parents[3] / "index_santa_flat.html"
 
+# Imagen del panel del frontend, servida como archivo aparte en vez de
+# incrustada como data: URI en el HTML. Antes vivía en base64 dentro de
+# index_santa_flat.html (~3.2MB de texto en una sola línea): el navegador
+# tenía que descargar y parsear todo el documento antes de poder pintar
+# nada, sin beneficio de caché entre visitas ni entre despliegues. Como
+# archivo aparte con encabezados de caché, se descarga en paralelo al HTML
+# y persiste en el caché del navegador. Mismo criterio de archivo único
+# explícito que _RUTA_FRONTEND: no se monta el repo como estático.
+_RUTA_IMAGEN_DEIDAD = Path(__file__).resolve().parents[3] / "deidad_1.jpeg"
+
 
 # --- Contenedor de dependencias, ensamblado una vez al arrancar ---------
 
@@ -755,6 +765,28 @@ def _router() -> APIRouter:
                 detail="Frontend no disponible en este despliegue.",
             )
         return FileResponse(_RUTA_FRONTEND, media_type="text/html; charset=utf-8")
+
+    @router.get("/assets/deidad.jpg", include_in_schema=False)
+    def imagen_deidad() -> FileResponse:
+        """Imagen del panel, servida aparte del HTML para que el navegador
+        la cachee entre visitas (ver comentario de ``_RUTA_IMAGEN_DEIDAD``).
+        """
+        if not _RUTA_IMAGEN_DEIDAD.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Imagen no disponible en este despliegue.",
+            )
+        return FileResponse(
+            _RUTA_IMAGEN_DEIDAD,
+            media_type="image/jpeg",
+            # Sin querystring de versión en la URL, "immutable" sería
+            # peligroso: un reemplazo futuro del archivo nunca se vería
+            # hasta que expirara el caché. Un día es suficiente para que
+            # navegaciones repetidas en la misma sesión no re-descarguen
+            # 2.4MB, sin comprometerse a un año de caché sobre una URL que
+            # puede cambiar de contenido.
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     @router.get("/health", tags=["operación"])
     def health() -> dict:

@@ -163,13 +163,19 @@ Con Postgres + Redis activos:
 ## Lo que NO existe todavía (gap honesto)
 
 - **`.github/workflows/ci.yml` no tiene paso de deploy.** CI corre
-  `pytest` (matriz 3.10/3.11/3.12) y el job `quality` (mypy, black,
-  pylint) en cada push/PR a `main` — nada más. No hay build de imagen,
-  no hay artifact registry, no hay step que toque un servidor. El deploy
-  descrito en `docs/despliegue.md` y aquí es manual (SSH + `git pull` +
-  `systemctl restart`) hasta que alguien construya ese paso.
-- No hay contenedor/imagen Docker versionada en el repo — el despliegue
-  es del checkout de git directamente sobre un venv, no de un artefacto
-  inmutable. Esto es relevante para `ROLLBACK.md`: "rollback" hoy es
-  `git checkout <rev-anterior>` + reinstalar deps + reiniciar, no
-  "apuntar a la imagen anterior".
+  `pytest` (matriz 3.10/3.12) y el job `quality` (mypy, black, pylint,
+  `promtool check`) en cada push/PR a `main` — nada más. No hay build de
+  imagen en CI, no hay artifact registry, no hay step que toque un
+  servidor. El deploy descrito en `docs/despliegue.md` y aquí sigue
+  siendo manual (SSH + `git pull` + `systemctl restart`) hasta que
+  alguien construya ese paso.
+- Hay un `Dockerfile` y un `docker-compose.yml` en la raíz (backend +
+  Postgres + Redis + Prometheus + Grafana en un solo `docker compose up`),
+  pero son para desarrollo local/staging — **no** son el camino de
+  despliegue de referencia, no se publican en ningún registry y CI no
+  los construye ni los escanea. El despliegue de referencia sigue siendo
+  el venv + systemd de arriba, y `ROLLBACK.md` sigue asumiendo eso:
+  "rollback" es `git checkout <rev-anterior>` + reinstalar deps +
+  reiniciar, no "apuntar a la imagen anterior". Dockerizar el despliegue
+  de producción de verdad (registry, build en CI, rollback por tag)
+  sigue siendo trabajo pendiente.

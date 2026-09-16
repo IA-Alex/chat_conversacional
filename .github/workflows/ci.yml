@@ -90,3 +90,13 @@ jobs:
 
       - name: pylint
         run: pylint --rcfile=.pylintrc src
+
+      - name: Validar config y reglas de Prometheus
+        # ``promtool`` no es un paquete de pip: es el binario que trae la
+        # propia imagen de Prometheus. Se usa vía Docker (ya disponible en
+        # el runner) en vez de descargar/compilar el binario aparte.
+        run: |
+          docker run --rm -v "$PWD/monitoring:/monitoring" prom/prometheus:latest \
+            promtool check config /monitoring/prometheus.yml
+          docker run --rm -v "$PWD/monitoring:/monitoring" prom/prometheus:latest \
+            promtool check rules /monitoring/prometheus_rules.yml

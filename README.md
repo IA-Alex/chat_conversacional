@@ -209,3 +209,36 @@ pylint --rcfile=.pylintrc src       # lint
 
 Estas mismas verificaciones corren en CI en cada push/PR
 (`.github/workflows/ci.yml`).
+
+## Deployment
+
+Guía completa de servidor propio (SSH, firewall, Caddy, systemd, backups):
+`docs/despliegue.md`. Estrategia de despliegue y checklist pre-deploy:
+`docs/runbooks/DEPLOYMENT.md` (incluye qué NO existe todavía — el deploy
+de producción sigue siendo manual vía `git pull` + `systemctl restart`;
+`Dockerfile`/`docker-compose.yml` son para desarrollo local/staging, no
+para producción).
+
+### Stack completo en local (Docker)
+
+```bash
+cp .env.example .env   # completar DEEPINFRA_API_KEY, SANTISIMA_SESSION_SECRET, SANTISIMA_CLAVE_CIFRADO
+touch dispositivos.db purga_estado.json  # bind mounts: deben existir antes del primer `up`
+docker compose up -d
+curl http://localhost:8000/health
+```
+
+Quick start (servidor con systemd, ver `docs/despliegue.md` para el detalle
+de cada paso):
+
+```bash
+git clone <repo> && cd chat_conversacional
+scripts/init_secrets.sh --mode aws   # o --mode vault; ver --help
+pip install -e ".[postgres,redis]"
+systemctl restart santisima
+```
+
+Purga de retención automática (systemd timer, cron, o `docker-compose.purga.yml`
+si el host no tiene ninguno de los dos): `docs/despliegue.md` §7.
+
+Monitoreo: `monitoring/README.md`. Troubleshooting: `docs/runbooks/TROUBLESHOOTING.md`.

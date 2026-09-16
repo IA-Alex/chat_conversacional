@@ -1,0 +1,23 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+*.db
+*.db-journal
+purga_estado.json
+.env
+.env.example
+propuesta_index
+propuesta_index.tar.gz
+*.mp4
+*.jpeg
+*.jpg
+*.png
+La Santísima Muerte.html
+index_santa.html
+tests

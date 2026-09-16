@@ -1,0 +1,115 @@
+# Stack completo (backend + Postgres + Redis + Prometheus + Grafana) para
+# levantar todo con un comando, p. ej. desarrollo local o staging.
+#
+# El despliegue de referencia (docs/runbooks/DEPLOYMENT.md,
+# docs/despliegue.md) sigue siendo bare venv + systemd; este archivo no lo
+# reemplaza. La purga de retención (scripts/purgar_retencion.py) NO corre
+# aquí: usar docker-compose.purga.yml aparte (cron del host), o el systemd
+# timer si el backend corre fuera de Docker. Ver docs/despliegue.md §7.
+#
+# "version:" omitido a propósito: la clave quedó obsoleta en Compose v2 y
+# emite un warning en cada comando.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DEEPINFRA_API_KEY: ${DEEPINFRA_API_KEY:?falta DEEPINFRA_API_KEY}
+      SANTISIMA_SESSION_SECRET: ${SANTISIMA_SESSION_SECRET:?falta SANTISIMA_SESSION_SECRET}
+      SANTISIMA_CLAVE_CIFRADO: ${SANTISIMA_CLAVE_CIFRADO:?falta SANTISIMA_CLAVE_CIFRADO}
+      SANTISIMA_API_KEYS: ${SANTISIMA_API_KEYS:-}
+      SANTISIMA_USAR_POSTGRES: "true"
+      SANTISIMA_POSTGRES_DSN: postgresql://santisima:santisima@postgres:5432/santisima_db
+      SANTISIMA_USAR_REDIS_RATE_LIMIT: "true"
+      SANTISIMA_REDIS_URL: redis://redis:6379/0
+      # dispositivos.db (identidad/abuso) es SQLite siempre — usar_postgres
+      # solo mueve el historial de conversación, no la tabla de
+      # dispositivos (ver config.py). Igual que purga_estado.json, se
+      # bind-montea al repo del host para que sobreviva a `docker compose
+      # down` y para que docker-compose.purga.yml (que también monta el
+      # repo del host) y este servicio vean el mismo archivo.
+      SANTISIMA_DISPOSITIVOS_DB_PATH: /app/data/dispositivos.db
+      SANTISIMA_PURGA_ESTADO_PATH: /app/data/purga_estado.json
+    volumes:
+      - ./dispositivos.db:/app/data/dispositivos.db
+      - ./purga_estado.json:/app/data/purga_estado.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # HEALTHCHECK ya está definido en el Dockerfile; no se repite aquí.
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: santisima
+      POSTGRES_PASSWORD: santisima
+      POSTGRES_DB: santisima_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U santisima"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Mismo nombre que "rule_files: - prometheus_rules.yml" dentro de
+      # prometheus.yml (ruta relativa al propio archivo) — montarlo con
+      # otro nombre rompe esa referencia. Las reglas se cargan vía
+      # rule_files en el config, no por flag de línea de comandos (no
+      # existe un "--rules.files" en el binario de Prometheus).
+      - ./monitoring/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+      - prometheus_data:/prometheus
+    # prometheus.yml apunta a "host.docker.internal:8000" a propósito (ver
+    # ese archivo): es el mismo target tanto si el backend corre bare vía
+    # systemd en el host como si corre como el servicio "api" de este
+    # compose (publicado en el puerto 8000 del host). extra_hosts es lo
+    # que hace que ese nombre resuelva en Linux; en Docker Desktop
+    # (Mac/Windows) ya resuelve sin esto.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    # Sin provisioning automático: monitoring/grafana_dashboard.json se
+    # importa a mano (Grafana UI → Dashboards → Import) tras el primer
+    # arranque. Ver monitoring/README.md.
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:

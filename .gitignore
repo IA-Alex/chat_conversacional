@@ -12,6 +12,13 @@ output/
 *.db-wal
 *.db-shm
 
+# Resultado de la última corrida de scripts/purgar_retencion.py (ver
+# infrastructure/purga_estado.py) — estado runtime, no fuente. Se recrea
+# solo; con Docker (docker-compose.yml, docker-compose.purga.yml) el
+# archivo debe existir antes del primer `up` (bind mount), pero eso no
+# significa que deba versionarse.
+purga_estado.json
+
 # Artefactos de test/lint/build que no deben versionarse.
 .coverage
 htmlcov/

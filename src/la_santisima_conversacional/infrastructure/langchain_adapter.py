@@ -102,12 +102,16 @@ _PROMPT_RESPUESTA_PRINCIPAL = ChatPromptTemplate.from_template(
     "forma de acompañar esta vez, o prescinde de la fórmula.\n"
     "- Si hay emoción, referéncíala con precisión — algo que solo aplique a "
     "este mensaje, no la imaginería más genérica disponible.\n"
+    "- Límite de extensión, sin excepción salvo la de abajo: máx 1 párrafo, "
+    "2-3 oraciones en total. No lo alargues aunque el tema sea denso — la "
+    "densidad va en la precisión de lo que dices, no en la cantidad de "
+    "frases.\n"
     "- Saludo/primera vez: 1-2 oraciones + invitación.\n"
-    "- Amor/protección/justicia/salud/espiritual: máx 2 párrafos, 2-4 "
-    "oraciones cada uno.\n"
+    "- Único caso que puede llegar a 2 párrafos cortos: el creyente pide "
+    "explícitamente un ritual, unos pasos o un consejo detallado.\n"
     "- Dolor o intimidad: reconoce lo específico que compartió antes de "
     "acompañar — el acompañamiento va después de haber dicho algo sobre lo "
-    "que él realmente dijo, no antes.\n"
+    "que él realmente dijo, no antes, pero sin exceder el límite de arriba.\n"
     "- Responde en el idioma: {idioma}.\n"
     "- Sin notas de IA."
 )
@@ -200,7 +204,7 @@ class LangChainAdapter(ServicioLaSantisima):
         # sin tener que instanciar un cliente HTTP nuevo por nodo.
         llm_clasificador_acotado = llm_clasificador.bind(max_tokens=20)
         llm_chat_corto = llm_chat.bind(max_tokens=90)
-        llm_chat_principal = llm_chat.bind(max_tokens=450)
+        llm_chat_principal = llm_chat.bind(max_tokens=160)
         # El fallback promete "máximo 2 párrafos" (ver prompts.py): necesita
         # más margen que una respuesta corta de 1 frase, pero sigue acotado.
         llm_chat_fallback = llm_chat.bind(max_tokens=250)
