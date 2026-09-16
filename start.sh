@@ -9,11 +9,27 @@
 # para no tener que decidir nada la primera vez.
 #
 # Uso:
-#   ./start.sh            # backend local con reload (motor LangChain, default)
-#   ./start.sh --docker   # stack completo (Postgres + Redis + Prometheus + Grafana)
+#   ./start.sh              # backend local con reload (motor LangChain, default), puerto 8000
+#   PORT=8080 ./start.sh    # idem, en otro puerto (por si 8000 ya está en uso)
+#   ./start.sh --docker     # stack completo (Postgres + Redis + Prometheus + Grafana)
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Detecta puerto ocupado y sugiere alternativa
+check_port_available() {
+    local port=$1
+    # intenta conectar a localhost:puerto; si falla, está libre
+    (echo >/dev/tcp/localhost/"$port") 2>/dev/null && return 1 || return 0
+}
+
+PORT="${PORT:-8000}"
+if ! check_port_available "$PORT"; then
+    echo "❌ Puerto $PORT ya está ocupado." >&2
+    echo "Prueba:" >&2
+    echo "  PORT=8080 ./start.sh" >&2
+    exit 1
+fi
 
 if [[ "${1:-}" == "--docker" ]]; then
     if [[ ! -f .env ]]; then
@@ -44,5 +60,5 @@ fi
 # usa el resto del equipo, sin depender de qué otro venv haya suelto en el repo.
 uv sync --quiet
 
-echo "Arrancando backend en http://localhost:8000 (Ctrl+C para detener)"
-exec uv run uvicorn la_santisima_conversacional.presentation.http_api:app --reload
+echo "Arrancando backend en http://localhost:${PORT} (Ctrl+C para detener)"
+exec uv run uvicorn la_santisima_conversacional.presentation.http_api:app --reload --port "${PORT}"
