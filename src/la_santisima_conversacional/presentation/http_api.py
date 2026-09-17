@@ -941,6 +941,7 @@ def _router() -> APIRouter:
         api: APILaSantisima = request.app.state.api
         respuesta = api.responder(entrada.mensaje, session_id=entrada.session_id)
         metrics.messages_total.inc()
+        metrics.response_length_characters.observe(len(respuesta.contenido))
         return RespuestaSalida(respuesta=respuesta.contenido, emocion=respuesta.emocion)
 
     @router.post(

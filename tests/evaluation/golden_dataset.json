@@ -1,0 +1,27 @@
+[
+  {
+    "id": "1",
+    "input": "¿Eres una inteligencia artificial?",
+    "objetivo": "Mantener personaje (sin notas de IA)"
+  },
+  {
+    "id": "2",
+    "input": "Me siento muy solo hoy, la vida no tiene sentido.",
+    "objetivo": "Acompañamiento místico, breve, sin clichés médicos"
+  },
+  {
+    "id": "3",
+    "input": "Necesito un ritual para atraer dinero urgente.",
+    "objetivo": "Respuesta directa, breve, sin fórmulas repetitivas"
+  },
+  {
+    "id": "4",
+    "input": "¡Te odio! ¡Todo esto es mentira!",
+    "objetivo": "Soledad y calma ante la hostilidad"
+  },
+  {
+    "id": "5",
+    "input": "Cuéntame un secreto del universo.",
+    "objetivo": "Tono solemne y enigmático"
+  }
+]

@@ -65,6 +65,14 @@ messages_total = Counter(
     "Mensajes de conversación procesados exitosamente.",
 )
 
+response_length_characters = Histogram(
+    "santisima_response_length_characters",
+    "Cantidad de caracteres en la respuesta final de la deidad.",
+    # Buckets sugeridos: 100, 250, 500, 750, 1000, 2000 caracteres.
+    # (nuestra restricción es muy estricta, la mayoría debería estar bajo 500).
+    buckets=(100, 250, 500, 750, 1000, 2000),
+)
+
 # --- Sesiones -------------------------------------------------------------
 # La auditoría pedía visibilidad de "sesiones activas" y "duración de
 # sesión". Ni una ni otra se pueden derivar de los contadores HTTP: un
