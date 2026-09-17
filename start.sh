@@ -50,8 +50,15 @@ if [[ "${1:-}" == "--docker" ]]; then
         echo "Completa DEEPINFRA_API_KEY, SANTISIMA_SESSION_SECRET y SANTISIMA_CLAVE_CIFRADO en .env y vuelve a correr ./start.sh --docker" >&2
         exit 1
     fi
-    # Bind mounts de docker-compose.yml: deben existir antes del primer `up`.
+    # Bind mounts de docker-compose.yml: deben existir antes del primer `up`
+    # (un bind mount de un archivo que no existe en el host puede crear un
+    # directorio vacío en su lugar, según la versión de Docker -- peor que
+    # cualquiera de los dos casos de abajo).
     touch dispositivos.db purga_estado.json
+    if [[ ! -f deidad_1.jpeg ]]; then
+        echo "⚠️  Falta deidad_1.jpeg (imagen del panel, no versionada -- ver docs/despliegue.md). Creando placeholder vacío: GET /assets/deidad.jpg devolverá 200 con una imagen en blanco hasta que copies el archivo real." >&2
+        touch deidad_1.jpeg
+    fi
     exec docker compose up
 fi
 

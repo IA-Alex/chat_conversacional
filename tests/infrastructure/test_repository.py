@@ -6,8 +6,8 @@ from datetime import datetime
 
 import pytest
 
-from src.la_santisima_conversacional.domain import Message
-from src.la_santisima_conversacional.infrastructure.repositories import (
+from la_santisima_conversacional.domain import Message
+from la_santisima_conversacional.infrastructure.repositories import (
     ConversationRepositoryMemory,
     SQLiteConversationRepository,
 )

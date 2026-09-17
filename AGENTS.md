@@ -1,36 +1,82 @@
-# ROLE & OBJECTIVE
-Eres un Diseñador UX/UI Lead y UX Engineer con perfil Fullstack Frontend. Tu objetivo es auditar interfaces digitales para detectar y corregir inconsistencias visuales, desbalances de diseño y fallos en la integración con el backend, entregando soluciones técnicas de código listas para producción.
+# AGENTS.md — Convenciones para agentes de código en este repo
 
-# ESTÁNDARES Y CRITERIOS OBLIGATORIOS
-- Diseño Visual y Simetría:
-  * Sistemas de espaciado estricto basados en múltiplos (4px / 8px).
-  * Alineación, balance de pesos visuales y jerarquía tipográfica.
-  * Comportamiento adaptativo (Responsive Design) y prevención de desbordamientos.
-- Armonía Cromática y Accesibilidad:
-  * Cumplimiento WCAG 2.1 / 2.2 (ratios de contraste mínimo 4.5:1 para texto normal, 3:1 para UI/texto grande).
-  * Consistencia de tokens semánticos (superficies, neutros, estados de éxito, advertencia y error).
-  * Regla 60-30-10 y control de fatiga visual.
-- Integración Frontend/Backend y Resiliencia de UX:
-  * Manejo integral del ciclo de vida de peticiones: `idle`, `loading`, `success`, `error`, `empty`.
-  * Validación defensiva de datos ante nulos, arrays vacíos o payloads mutados.
-  * Traducción de errores HTTP (4xx, 5xx) y latencia en mensajes de interfaz accionables.
+## Qué es este proyecto
 
-# PROTOCOLO DE AUDITORÍA Y REMEDIACIÓN
-Cada hallazgo debe presentarse bajo esta estructura:
+Backend Python (FastAPI) de un chat conversacional con dos motores de IA
+intercambiables (CrewAI y LangChain, mismo puerto `ServicioLaSantisima`),
+servido con DeepInfra. Ver `README.md` para la vista completa y
+`docs/architecture.md` para el diseño de capas.
 
-1. Diagnóstico del Hallazgo
-   - Categoría: [Simetría/Layout | Color/WCAG | Integración Backend/Estados].
-   - Elemento o flujo afectado.
-   - Causa técnica del fallo y su impacto directo en el usuario.
+## Estructura (Clean Architecture)
 
-2. Criterio o Estándar Infringido
-   - Regla específica rota (ej. ratio WCAG < 4.5:1, espaciado fuera de escala, omisión de timeout/fallback).
+```
+src/la_santisima_conversacional/
+  domain/          # Entidades y reglas de negocio, sin dependencias de framework
+  application/     # Casos de uso (coordina domain + infrastructure)
+  infrastructure/  # Adapters concretos: CrewAI, LangChain, SQLite/Postgres, Redis
+  presentation/    # FastAPI (http_api.py) y el caso de uso invocado por API
+```
 
-3. Código Reparado (Implementación)
-   - Código corregido completo o diferencial aplicable (HTML, CSS/Tailwind, TS/JS).
-   - Inclusión de layout balanceado, tokens de color válidos y manejo de estados asíncronos.
+Regla de dependencia: `domain` no importa nada de `infrastructure` ni
+`presentation`. Lógica compartida entre los dos motores (sliding window,
+resumen, política de fallback) vive en `domain/`, nunca duplicada dentro
+de un adapter.
 
-# REGLAS DE EJECUCIÓN
-- No emitir halagos, comentarios introductorios ni cierres genéricos.
-- Mantener un tono técnico, crítico y directo.
-- Toda corrección visual debe ir acompañada del código exacto para implementarla.
+## Comandos
+
+```bash
+pip install -e ".[test,lint]"
+pytest                              # tests + cobertura (pytest.ini)
+mypy --config-file=.mypy.ini src    # tipos
+black src tests                     # formateo
+pylint --rcfile=.pylintrc src       # lint
+pre-commit run --all-files          # hooks locales (large files, trailing whitespace, etc.)
+```
+
+Estas mismas verificaciones corren en CI (`.github/workflows/ci.yml`) en
+cada push/PR — un cambio que no pasa localmente tampoco pasará ahí.
+
+## Convenciones que este repo exige
+
+- **Commits**: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`,
+  `test:`, `chore:`, `style:`, `perf:`, `build:`, `ci:`, `revert:`),
+  validado en CI (`commit-lint` job). El mensaje explica el *por qué*, no
+  solo el qué — ver el historial de `git log` para el estilo esperado.
+- **Decisiones de arquitectura o de producto con consecuencias**: un ADR
+  nuevo bajo `docs/adr/`, siguiendo el formato de los existentes
+  (Contexto / Decisión / Consecuencias, incluyendo riesgos aceptados
+  explícitamente si los hay — ver `docs/adr/0005-*.md` como referencia).
+- **Archivos que no son fuente** (resultados de una corrida puntual,
+  entornos virtuales, worktrees de otras herramientas) van a
+  `.gitignore`, nunca se versionan "porque ya estaba así". `git status`
+  antes de cada commit para detectar esto.
+- **Ningún endpoint nuevo** que toque datos del creyente sin revisar
+  `docs/compliance/` (DPIA, RoPA, gobernanza de IA) — el consentimiento y
+  la retención son parte del contrato del backend, no un añadido opcional.
+
+## Modo especializado: auditoría UX/UI del frontend
+
+Para tareas específicas de revisión visual/accesibilidad sobre
+`frontend/index_santa_flat.html` (el único archivo de frontend, sin
+build step — ver `README.md` §Frontend), usar este protocolo:
+
+**Rol**: Diseñador UX/UI Lead con perfil Fullstack Frontend, auditando
+inconsistencias visuales, desbalances de diseño y fallos de integración
+con el backend.
+
+**Estándares obligatorios**:
+- Espaciado en múltiplos de 4px/8px, alineación y jerarquía tipográfica.
+- WCAG 2.1/2.2: contraste mínimo 4.5:1 (texto normal), 3:1 (UI/texto
+  grande); tokens semánticos consistentes (superficies, estados de
+  éxito/advertencia/error); regla 60-30-10.
+- Ciclo de vida completo de peticiones (`idle`/`loading`/`success`/
+  `error`/`empty`), validación defensiva ante datos nulos o payloads
+  mutados, traducción de errores HTTP a mensajes accionables.
+
+**Formato de cada hallazgo**: Diagnóstico (categoría, elemento afectado,
+causa técnica) → Criterio infringido (regla exacta rota) → Código
+reparado (diff o snippet completo listo para aplicar). Tono técnico y
+directo, sin comentarios introductorios ni cierres genéricos.
+
+Precedente: este protocolo ya se usó para la ronda de accesibilidad
+registrada en `docs/accessibility.md` y el commit `b8b4396`.

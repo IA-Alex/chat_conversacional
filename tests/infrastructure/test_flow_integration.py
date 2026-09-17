@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.la_santisima_conversacional.domain import MensajeCreyente, Message
-from src.la_santisima_conversacional.infrastructure.crewai_adapter import CrewAILaSantisimaAdapter
+from la_santisima_conversacional.domain import MensajeCreyente, Message
+from la_santisima_conversacional.infrastructure.crewai_adapter import CrewAILaSantisimaAdapter
 
 FLOW_JSON_PATH = (
     Path(__file__).resolve().parent.parent.parent

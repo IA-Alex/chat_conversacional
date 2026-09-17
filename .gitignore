@@ -1,9 +1,18 @@
 .env
 .venv/
 venv/
+venv_chat/
 __pycache__/
 .crewai/
 output/
+
+# Worktrees/estado de herramientas de agentes IA (Kilo, etc.): entorno
+# local de quien desarrolla, no fuente del proyecto.
+.kilo/
+
+# Resultados de corridas puntuales (scripts manuales, evals ad hoc) con
+# timestamp en el nombre: no son reproducibles ni comparables como fuente.
+resultados_*.json
 
 # Bases de datos locales: contienen device_id, consentimiento y (si no hay
 # SANTISIMA_CLAVE_CIFRADO configurada) contenido conversacional en texto

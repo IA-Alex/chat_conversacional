@@ -74,7 +74,7 @@ _RUTA_AVISO_PRIVACIDAD = Path(__file__).resolve().parents[3] / "docs" / "privaci
 # CORS — al ser mismo origen, el navegador no aplica esa política en
 # absoluto. Un solo archivo explícito, igual que _RUTA_AVISO_PRIVACIDAD: no
 # se monta el repo como estático, que expondría .env y las bases sqlite.
-_RUTA_FRONTEND = Path(__file__).resolve().parents[3] / "index_santa_flat.html"
+_RUTA_FRONTEND = Path(__file__).resolve().parents[3] / "frontend" / "index_santa_flat.html"
 
 # Imagen del panel del frontend, servida como archivo aparte en vez de
 # incrustada como data: URI en el HTML. Antes vivía en base64 dentro de

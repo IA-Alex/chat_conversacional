@@ -4,8 +4,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from src.la_santisima_conversacional.config import Settings
-from src.la_santisima_conversacional.infrastructure.security import (
+from la_santisima_conversacional.config import Settings
+from la_santisima_conversacional.infrastructure.security import (
     emitir_device_token,
     emitir_session_id,
     validar_session_id,

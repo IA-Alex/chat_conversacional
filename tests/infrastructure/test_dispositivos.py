@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.la_santisima_conversacional.infrastructure.dispositivos import (
+from la_santisima_conversacional.infrastructure.dispositivos import (
     RegistroDispositivosMemory,
     RegistroDispositivosSQLite,
 )

@@ -1,6 +1,6 @@
 """Tests para el limitador de tasa en memoria."""
 
-from src.la_santisima_conversacional.infrastructure.rate_limit import LimitadorTasa
+from la_santisima_conversacional.infrastructure.rate_limit import LimitadorTasa
 
 
 class TestLimitadorTasa:

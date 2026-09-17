@@ -9,6 +9,8 @@ momento.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-16
+
 ### Added (cont.)
 - **Consentimiento explícito diferenciado** (ISO/IEC 29134, DPIA §4):
   nuevo endpoint `POST /api/v1/dispositivos/consentimiento` registra, por
@@ -38,8 +40,22 @@ momento.
   y Declaración de Aplicabilidad ISO/IEC 27001 (SoA).
 - Este `CHANGELOG.md`.
 
+- `start.sh` como punto de entrada único para levantar el backend en
+  local (`uv sync` + `uvicorn --reload`), con detección de puerto
+  ocupado y selección automática de uno libre. Reemplaza a los scripts
+  sueltos `iniciar_servidor.sh`/`check_servidor.sh`/`ejecutar_pruebas.sh`,
+  ya retirados del repo.
+- Mejoras de accesibilidad WCAG en `frontend/index_santa_flat.html` y
+  suite de pruebas asociada (ver `docs/accessibility.md`).
+
+### Fixed
+- `use_langchain=True` fijado por defecto: el motor CrewAI quedaba
+  degradado sin detección de crisis mientras esa rama de enrutado
+  existió (ver nota histórica en `docs/architecture.md`).
+
 ### Known risks (ver `docs/compliance/gobernanza-ia.md`)
 - El sistema no enruta mensajes de crisis emocional grave a un
   tratamiento distinto del devocional estándar. Riesgo identificado y
   aceptado temporalmente por decisión de producto — revisión obligatoria
-  antes de lanzamiento público. No forma parte de este release documental.
+  antes de lanzamiento público. Sigue abierto en este release; no forma
+  parte de este release documental (ver ADR-0005).

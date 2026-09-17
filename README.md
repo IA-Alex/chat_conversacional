@@ -159,6 +159,15 @@ historial de esa sesión).
 antiguos que `SANTISIMA_RETENCION_DIAS` (90 días por defecto). Debe
 programarse periódicamente (cron/systemd timer); no corre solo.
 
+### Frontend
+
+`GET /` sirve `frontend/index_santa_flat.html`: un HTML autocontenido
+(sin build step, sin bundler) que consume la API en el mismo origen
+(`127.0.0.1:8000`) para no chocar con CORS. Vive en un único archivo
+explícito en vez de montarse todo el repo como estático, que expondría
+`.env` y las bases SQLite (ver el comentario junto a `_RUTA_FRONTEND` en
+`presentation/http_api.py`). No es un artefacto de build: es la fuente.
+
 ## Escalar a múltiples instancias
 
 Por defecto el backend corre en **una sola instancia**: repositorio
@@ -224,6 +233,7 @@ para producción).
 ```bash
 cp .env.example .env   # completar DEEPINFRA_API_KEY, SANTISIMA_SESSION_SECRET, SANTISIMA_CLAVE_CIFRADO
 touch dispositivos.db purga_estado.json  # bind mounts: deben existir antes del primer `up`
+touch deidad_1.jpeg    # idem -- o copia la imagen real (ver docs/despliegue.md) antes de este paso
 docker compose up -d
 curl http://localhost:8000/health
 ```

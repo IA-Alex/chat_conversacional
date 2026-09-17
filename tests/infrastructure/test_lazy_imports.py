@@ -9,11 +9,11 @@ archivo); este test es la prueba real de que sí resuelven, para que una
 regresión en el patrón se note aquí y no en producción.
 """
 
-from src.la_santisima_conversacional import infrastructure
+from la_santisima_conversacional import infrastructure
 
 
 def test_langchain_adapter_resuelve_via_getattr_del_paquete():
-    from src.la_santisima_conversacional.infrastructure.langchain_adapter import (
+    from la_santisima_conversacional.infrastructure.langchain_adapter import (
         LangChainAdapter as _Directo,
     )
 
@@ -24,7 +24,7 @@ def test_crewai_adapter_resuelve_via_getattr_del_paquete():
     # conftest.py registra un ``crewai`` falso en sys.modules antes de que
     # cualquier test importe nada, así que esto funciona incluso sin el
     # paquete real instalado (extra opcional, ver pyproject.toml).
-    from src.la_santisima_conversacional.infrastructure.crewai_adapter import (
+    from la_santisima_conversacional.infrastructure.crewai_adapter import (
         CrewAILaSantisimaAdapter as _Directo,
     )
 

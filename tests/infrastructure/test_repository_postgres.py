@@ -24,8 +24,8 @@ import pytest
 
 psycopg = pytest.importorskip("psycopg", reason="requiere el extra 'postgres'")
 
-from src.la_santisima_conversacional.domain import Message  # noqa: E402
-from src.la_santisima_conversacional.infrastructure.repositories import (  # noqa: E402
+from la_santisima_conversacional.domain import Message  # noqa: E402
+from la_santisima_conversacional.infrastructure.repositories import (  # noqa: E402
     PostgresConversationRepository,
 )
 

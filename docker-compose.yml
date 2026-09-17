@@ -35,6 +35,16 @@ services:
     volumes:
       - ./dispositivos.db:/app/data/dispositivos.db
       - ./purga_estado.json:/app/data/purga_estado.json
+      # Imagen del panel del frontend (ver _RUTA_IMAGEN_DEIDAD en
+      # presentation/http_api.py, resuelve a /app/deidad_1.jpeg dentro del
+      # contenedor). Gitignorada a propósito (no pertenece al repo del
+      # backend) y excluida también del build context (.dockerignore:
+      # *.jpeg) para no meter 2.4MB en cada capa de imagen — se monta en
+      # vez de copiarse. start.sh valida que exista antes de `up` porque
+      # un bind mount de un archivo que no existe en el host crea un
+      # directorio vacío en su lugar (peor que el 404 explícito del
+      # endpoint si el mount ni siquiera llega a intentarse).
+      - ./deidad_1.jpeg:/app/deidad_1.jpeg:ro
     depends_on:
       postgres:
         condition: service_healthy

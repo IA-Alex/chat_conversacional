@@ -18,7 +18,7 @@ import pytest
 
 redis = pytest.importorskip("redis", reason="requiere el extra 'redis'")
 
-from src.la_santisima_conversacional.infrastructure.rate_limit import (  # noqa: E402
+from la_santisima_conversacional.infrastructure.rate_limit import (  # noqa: E402
     LimitadorTasaRedis,
 )
 

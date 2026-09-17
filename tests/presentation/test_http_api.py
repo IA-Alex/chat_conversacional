@@ -28,13 +28,13 @@ def cliente(monkeypatch):
     monkeypatch.setenv("SANTISIMA_DEBUG", "false")
     monkeypatch.setenv("SANTISIMA_CLAVE_CIFRADO", Fernet.generate_key().decode())
 
-    from src.la_santisima_conversacional import config as config_module
+    from la_santisima_conversacional import config as config_module
 
     config_module.get_settings.cache_clear()
 
-    for nombre in ("src.la_santisima_conversacional.presentation.http_api",):
+    for nombre in ("la_santisima_conversacional.presentation.http_api",):
         sys.modules.pop(nombre, None)
-    http_api = importlib.import_module("src.la_santisima_conversacional.presentation.http_api")
+    http_api = importlib.import_module("la_santisima_conversacional.presentation.http_api")
 
     with TestClient(http_api.app) as client:
         # Reemplaza el motor real (LangChainAdapter con stubs de conftest)
@@ -274,13 +274,13 @@ class TestRegistroDeDispositivo:
         necesitar cientos de requests en el test."""
         monkeypatch.setenv("SANTISIMA_RATE_LIMIT_REGISTRO_POR_MINUTO", "2")
 
-        from src.la_santisima_conversacional import config as config_module
+        from la_santisima_conversacional import config as config_module
 
         config_module.get_settings.cache_clear()
         import sys as _sys
 
-        _sys.modules.pop("src.la_santisima_conversacional.presentation.http_api", None)
-        http_api = importlib.import_module("src.la_santisima_conversacional.presentation.http_api")
+        _sys.modules.pop("la_santisima_conversacional.presentation.http_api", None)
+        http_api = importlib.import_module("la_santisima_conversacional.presentation.http_api")
 
         with TestClient(http_api.app) as cliente_limitado:
             assert cliente_limitado.post("/api/v1/dispositivos").status_code == 200
@@ -301,8 +301,8 @@ class TestRegistroDeDispositivo:
     def test_device_token_de_otra_instalacion_del_servidor_es_rechazado(self, cliente, monkeypatch):
         """Un device_token firmado con OTRO session_secret (p. ej. de otro
         backend, o fabricado) nunca debe pasar la verificación de firma."""
-        from src.la_santisima_conversacional.infrastructure.security import emitir_device_token
-        from src.la_santisima_conversacional.config import Settings
+        from la_santisima_conversacional.infrastructure.security import emitir_device_token
+        from la_santisima_conversacional.config import Settings
 
         settings_ajenos = Settings(
             deepinfra_api_key="sk-test", session_secret="otro-secreto-totalmente-distinto"
@@ -320,7 +320,7 @@ class TestRegistroDeDispositivo:
         (ver test_revocar_dispositivo_con_api_key_admin_lo_bloquea), lo que
         le impedía al cliente distinguir "puedo re-registrarme solo" de
         "esto está bloqueado a propósito, no debo bypasearlo"."""
-        from src.la_santisima_conversacional.infrastructure.security import emitir_device_token
+        from la_santisima_conversacional.infrastructure.security import emitir_device_token
 
         settings_reales = cliente.app.state.settings
         token_huerfano = emitir_device_token("device-jamas-registrado", settings_reales)
@@ -485,11 +485,11 @@ class TestPrivacidad:
         monkeypatch.setenv("SANTISIMA_CLAVE_CIFRADO", "")
         monkeypatch.setenv("SANTISIMA_DEBUG", "true")
 
-        from src.la_santisima_conversacional import config as config_module
+        from la_santisima_conversacional import config as config_module
 
         config_module.get_settings.cache_clear()
-        sys.modules.pop("src.la_santisima_conversacional.presentation.http_api", None)
-        http_api = importlib.import_module("src.la_santisima_conversacional.presentation.http_api")
+        sys.modules.pop("la_santisima_conversacional.presentation.http_api", None)
+        http_api = importlib.import_module("la_santisima_conversacional.presentation.http_api")
 
         with TestClient(http_api.app) as cliente_sin_cifrado:
             resumen = cliente_sin_cifrado.get("/privacidad").json()["resumen"]

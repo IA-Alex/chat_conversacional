@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-HTML = RAIZ / "index_santa_flat.html"
+HTML = RAIZ / "frontend" / "index_santa_flat.html"
 HTTP_API = RAIZ / "src" / "la_santisima_conversacional" / "presentation" / "http_api.py"
 
 resultados: list[tuple[str, str, bool, str]] = []  # (id, tipo, ok, detalle)

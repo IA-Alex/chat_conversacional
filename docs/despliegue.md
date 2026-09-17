@@ -103,6 +103,19 @@ systemctl daemon-reload
 systemctl enable --now santisima
 ```
 
+**Antes del primer arranque**, copiar a mano a `WorkingDirectory` el único
+asset binario que el backend sirve pero que `git pull` nunca trae (está en
+`.gitignore` a propósito, igual que `deidad_1.jpeg` no se copia en la
+imagen Docker — ver `docker-compose.yml`):
+
+```bash
+scp deidad_1.jpeg santisima@servidor:/home/santisima/chat_conversacional/
+```
+
+Sin este archivo, `GET /assets/deidad.jpg` responde 404 (degradación
+explícita en `presentation/http_api.py: imagen_deidad`) — el resto del
+backend sigue funcionando, solo falta la imagen del panel del frontend.
+
 ## 5. Reverse proxy: Caddy (TLS automático)
 
 `/etc/caddy/Caddyfile`:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.la_santisima_conversacional.infrastructure.purga_estado import (
+from la_santisima_conversacional.infrastructure.purga_estado import (
     leer_estado,
     registrar_resultado,
 )

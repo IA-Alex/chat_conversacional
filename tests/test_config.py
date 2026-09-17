@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.la_santisima_conversacional.config import Settings
+from la_santisima_conversacional.config import Settings
 
 
 class TestSettings:

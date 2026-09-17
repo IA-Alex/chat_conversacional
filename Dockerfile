@@ -27,7 +27,7 @@ COPY src ./src
 # resuelven rutas relativas a la raíz del repo (parents[3] desde
 # http_api.py) — sin estos dos, GET "/" y GET /privacidad/documento
 # devuelven 404/500 en el contenedor aunque el resto de la API funcione.
-COPY index_santa_flat.html ./index_santa_flat.html
+COPY frontend/index_santa_flat.html ./frontend/index_santa_flat.html
 COPY docs/privacidad.md ./docs/privacidad.md
 
 RUN useradd -m -u 1000 santisima && chown -R santisima:santisima /app

@@ -11,8 +11,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.la_santisima_conversacional.domain import MensajeCreyente
-from src.la_santisima_conversacional.infrastructure.crewai_adapter import (
+from la_santisima_conversacional.domain import MensajeCreyente
+from la_santisima_conversacional.infrastructure.crewai_adapter import (
     CrewAILaSantisimaAdapter,
 )
 

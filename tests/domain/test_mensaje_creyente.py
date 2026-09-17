@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.la_santisima_conversacional.domain import MensajeCreyente
+from la_santisima_conversacional.domain import MensajeCreyente
 
 
 class TestMensajeCreyente:
