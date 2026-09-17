@@ -150,21 +150,49 @@
   .msg-user-col { display: flex; flex-direction: column; align-items: flex-end; }
   .msg-user-col .text { font-family: 'Crimson Pro', serif; font-weight: 400; font-size: var(--cal-text-user-size); line-height: 1.5; color: #c1c1c5; text-align: right; }
 
+  /* alpha 0.3 -> 0.1: a esa intensidad la línea competía con el glow de
+     foco de #chat-input (WCAG 2.4.7, ver más abajo) en el primer impacto
+     visual, generando dos líneas doradas muy juntas justo donde debe caer
+     la atención (el campo de texto). Se conserva atenuada solo como
+     separación estructural sutil entre #messages y el input. */
   #input-row { position: relative; z-index: 1; display: flex; align-items: center; gap: 16px;
-    padding: 20px 56px 40px; border-top: 1px solid rgba(184,150,95,0.3); }
+    padding: 20px 56px 40px; border-top: 1px solid rgba(184,150,95,0.1); }
   #chat-input { flex: 1; background: transparent; border: none; outline: none;
     font-family: 'Crimson Pro', serif; font-style: normal; font-size: 16px; color: #e8dcc8; padding: 8px 0; }
-  #chat-input::placeholder { color: rgba(232,220,200,0.52); }
+  /* alpha 0.58, no 0.52: medido contra el fondo real renderizado
+     (rgb(11,9,16), muestreado del chat-panel), 0.52 daba 4.49:1 —
+     por debajo del mínimo 4.5:1 de WCAG 1.4.3 (texto normal) que el
+     propio proyecto usa como referencia (ver --cal-text-meta arriba,
+     "4.92:1 sobre #0b0a10"). 0.58 da ~5.3:1, con el mismo margen que
+     ese otro texto secundario. */
+  #chat-input::placeholder { color: rgba(232,220,200,0.58); }
   #send-btn, #stop-btn { background: none; border: none; padding: 11px; min-width: 44px; min-height: 44px; cursor: pointer; color: rgba(184,150,95,0.85);
     display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   #send-btn:hover, #stop-btn:hover { color: rgba(184,150,95,1); }
   #stop-btn[hidden] { display: none; }
 
+  /* alpha 0.65, no 0.55: medido contra el fondo real renderizado
+     (rgb(11,9,16)), 0.55 daba 2.85:1 — bajo el mínimo 3:1 de WCAG 1.4.11
+     (contraste no textual) para un ícono funcional (no decorativo). 0.65
+     da ~3.56:1. El estado :disabled queda exento (WCAG 1.4.11 no aplica
+     a componentes inactivos). */
   #reset-btn { position: absolute; top: 14px; right: 14px; z-index: 2; background: none; border: none;
-    padding: 9px; min-width: 40px; min-height: 40px; cursor: pointer; color: rgba(184,150,95,0.55);
+    padding: 9px; min-width: 40px; min-height: 40px; cursor: pointer; color: rgba(184,150,95,0.65);
     display: flex; align-items: center; justify-content: center; }
   #reset-btn:hover { color: rgba(184,150,95,1); }
   #reset-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* Zona intermedia entre el layout apilado (≤767px) y el desktop donde el
+     panel de 50% ya tiene espacio sobrado (~900px+): a 768px (p. ej. iPad
+     en vertical) el panel de chat mide 384px, y el padding lateral de
+     56px pensado para desktop ancho dejaba tan poco espacio al input que
+     el placeholder se cortaba a mitad de palabra ("Platícame, que para
+     eso has venid[o]"). Mismo layout de dos columnas (no aplica el
+     criterio UX-D2, que solo exige 50% "en desktop"), solo menos padding
+     lateral en el input. */
+  @media (min-width: 768px) and (max-width: 900px) {
+    #input-row { padding-left: 28px; padding-right: 28px; }
+  }
 
   @media (max-width: 767px) {
     #root { flex-direction: column; }
@@ -179,7 +207,15 @@
 
   /* --- Umbral: pantalla previa al chat (privacidad / errores de arranque) --- */
   .threshold-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-    background: rgba(8,7,11,0.92); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
+    overflow-y: auto; background: rgba(8,7,11,0.92); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
+  /* En viewports de poca altura (móvil en horizontal, ventana embebida baja)
+     el contenido del umbral (consentimiento / error de arranque) puede
+     medir más que la ventana. Sin esto, `align-items: center` recorta lo
+     que no cabe por ambos extremos y, al ser `position: fixed`, no hay
+     scroll del documento que lo compense — el botón de aceptar (bloqueo
+     obligatorio antes de poder chatear, ver `_exigir_consentimiento` en
+     http_api.py) puede quedar fuera de pantalla sin forma de alcanzarlo. */
+  .threshold-overlay > * { margin-block: auto; }
   .threshold-overlay[hidden] { display: none; }
   .threshold-box { max-width: 560px; width: 100%; padding: 44px 40px; border: 1px solid rgba(184,150,95,0.28);
     background: rgba(13,11,17,0.7); }
@@ -290,7 +326,6 @@
      sistema visual); sin esta regla no queda NINGÚN indicador de foco en
      todo el archivo, ni en el input ni en los botones — un usuario de
      teclado no puede saber dónde está parado. */
-  #chat-input:focus-visible,
   #send-btn:focus-visible,
   #stop-btn:focus-visible,
   #reset-btn:focus-visible,
@@ -299,7 +334,18 @@
     outline: 2px solid rgba(184,150,95,0.9);
     outline-offset: 2px;
   }
-  #chat-input:focus-visible { outline-offset: -2px; }
+  /* #chat-input tiene su propio indicador (glow bajo el texto, no un
+     rectángulo): a diferencia de los botones, el input queda enfocado la
+     mayor parte del uso normal (autofoco al arrancar, tras cada
+     respuesta, tras reiniciar — ver bootstrap()/enviarMensaje()), así que
+     el contorno genérico de formulario estaba visible casi todo el
+     tiempo y rompía la estética sin bordes del resto de la interfaz.
+     Sigue siendo un indicador de foco real (WCAG 2.4.7), solo en el
+     mismo lenguaje visual (dorado, resplandor) que ya usa el resto. */
+  #chat-input:focus-visible {
+    outline: none;
+    box-shadow: 0 2px 0 rgba(184,150,95,0.9), 0 2px 12px 0 rgba(184,150,95,0.35);
+  }
 
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
@@ -344,7 +390,7 @@
 
     <div id="input-row">
       <span id="waiting-indicator" hidden aria-hidden="true"></span>
-      <input type="text" id="chat-input" placeholder="Platícame, que para eso has venido." disabled>
+      <input type="text" id="chat-input" placeholder="Estoy aquí para ti." disabled>
       <button id="stop-btn" aria-label="Detener" hidden>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
           <rect x="5" y="5" width="14" height="14"></rect>
@@ -444,6 +490,8 @@
 
   var LS_DEVICE_TOKEN_KEY = 'santisima_device_token';
   var LS_CONSENT_VERSION_KEY = 'santisima_consent_version';
+  var LS_ULTIMA_VISITA_KEY = 'santisima_ultima_visita';
+  var LS_ULTIMA_FRASE_KEY = 'santisima_ultima_frase_bienvenida';
   // Debe coincidir con el literal emitido en crewai_adapter.py y
   // langchain_adapter.py cuando el streaming se corta a mitad de camino.
   var MARCADOR_INTERRUPCION = '[La conexión se interrumpió. Por favor, intenta de nuevo.]';
@@ -496,6 +544,14 @@
   fogEls.forEach(function (el) { fogAnimacionesOriginales.push(el.style.animation); });
 
   var FOG_ESPERANDO_FACTOR = 0.65; // ligero aumento de velocidad del drift, no de intensidad
+  // Silencio prolongado en 'reposo' (sin mensaje nuevo) → el drift ambiental
+  // se ralentiza levemente, como si la niebla siguiera respirando en vez de
+  // congelarse. Reutiliza el mismo mecanismo que FOG_ESPERANDO_FACTOR (solo
+  // reescribe la duración del `animation` ya declarado), así que no agrega
+  // ninguna capa visual nueva — solo re-parametriza el drift existente.
+  var FOG_IDLE_FACTOR = 1.4;
+  var IDLE_RESPIRACION_MS = 45000;
+  var idleTimer = null;
 
   function acelerarFogEspera() {
     if (reducedMotion) return;
@@ -507,9 +563,30 @@
     });
   }
 
+  function ralentizarFogIdle() {
+    if (reducedMotion) return;
+    fogEls.forEach(function (el, i) {
+      var original = fogAnimacionesOriginales[i];
+      el.style.animation = original.replace(/(\d+(?:\.\d+)?)s/, function (m, num) {
+        return (parseFloat(num) * FOG_IDLE_FACTOR) + 's';
+      });
+    });
+  }
+
   function restaurarFogNormal() {
     if (reducedMotion) return;
     fogEls.forEach(function (el, i) { el.style.animation = fogAnimacionesOriginales[i]; });
+  }
+
+  // Programa la respiración de inactividad; solo se aplica si el estado
+  // sigue siendo 'reposo' cuando el timer dispara (si hubo un mensaje
+  // nuevo en el ínterin, el estado ya cambió y este chequeo lo descarta).
+  function programarRespiracionIdle() {
+    clearTimeout(idleTimer);
+    if (reducedMotion) return;
+    idleTimer = setTimeout(function () {
+      if (estadoNiebla === 'reposo') ralentizarFogIdle();
+    }, IDLE_RESPIRACION_MS);
   }
 
   function transicionarEstadoNiebla(nuevoEstado, emocion) {
@@ -524,9 +601,16 @@
     switch (nuevoEstado) {
       case 'reposo':
         // Si veníamos de 'respondiendo' (stream sin emoción final, o
-        // cortado por error), hay que apagar la intensidad sostenida
-        // explícitamente: ya no hay un timeout que lo haga solo.
-        if (estadoAnterior === 'respondiendo') apagarIntensidadSostenida();
+        // cortado por error), se usa el mismo aterrizaje que 'resuelto'
+        // (pico sostenido + fundido) en vez de cortar la intensidad de
+        // golpe: toda respuesta merece el mismo cierre visual, tenga o
+        // no emoción clasificada. mapeoEmotionIntensidad ya devuelve la
+        // misma configuración plana para cualquier valor de `emocion`,
+        // incluido `null`.
+        if (estadoAnterior === 'respondiendo') triggerIntensifyWithEmocion(null);
+        // Reinicia el conteo de silencio cada vez que se entra a 'reposo'
+        // (incluido el estado inicial, antes del primer mensaje).
+        programarRespiracionIdle();
         break;
       case 'esperando':
         acelerarFogEspera();
@@ -541,24 +625,24 @@
     }
   }
 
+  // Arranca el conteo de silencio también antes del primer mensaje: el
+  // estado inicial ya es 'reposo' pero nunca pasó por
+  // transicionarEstadoNiebla().
+  programarRespiracionIdle();
+
   // Sube la niebla periférica a intensidad y la SOSTIENE ahí — no vuelve
   // sola a reposo. Antes se apagaba con un timeout de 350ms sin importar
   // si el streaming seguía; la lectura completa de la respuesta (el tramo
   // más largo de la interacción) pasaba con la niebla ya en reposo. Ahora
   // se mantiene activa mientras dura 'respondiendo', y quien saca al
   // sistema de ese estado (el 'done' del stream, con o sin emoción, o el
-  // manejo de error de streamRespuesta) es responsable de apagarla o de
-  // dejar que triggerIntensifyWithEmocion tome el relevo.
+  // manejo de error de streamRespuesta) siempre pasa por
+  // triggerIntensifyWithEmocion para el mismo aterrizaje suave.
   // Entrada al estado 'respondiendo' — ver transicionarEstadoNiebla().
   function sostenerIntensidad() {
     if (reducedMotion) return;
     clearTimeout(intensifyTimer);
     fogEls.forEach(function (el) { el.classList.add('intense'); });
-  }
-
-  function apagarIntensidadSostenida() {
-    if (reducedMotion) return;
-    fogEls.forEach(function (el) { el.classList.remove('intense'); });
   }
 
   // Pulso breve por cada fragmento de texto que llega mientras se
@@ -828,6 +912,7 @@
         input.disabled = false;
         sendBtn.disabled = false;
         resetBtn.disabled = false;
+        input.focus();
       })
       .catch(function (err) {
         if (err !== 'boot_detenido') {
@@ -876,10 +961,122 @@
     return el;
   }
 
-  function crearMensajeWelcome() {
+  // Frases agrupadas por franja horaria — todas en la misma voz en primera
+  // persona que ya usa el resto del flujo (ADR-0005), sin variedad "de
+  // IA conversacional": son variaciones del mismo gesto ("te esperaba"),
+  // no contenido nuevo.
+  var FRASES_BIENVENIDA = {
+    madrugada: ['Ni la hora te aleja de este lugar.', 'Has llegado al lugar indicado, aún en la madrugada.'],
+    manana: ['Has llegado al lugar indicado.', 'Aquí, desde temprano, es tu lugar.'],
+    tarde: ['Has llegado al lugar indicado.', 'Aquí sigue tu lugar, contigo.'],
+    noche: ['La noche te trae de vuelta a este lugar.', 'Has llegado al lugar indicado, ahora que cae la noche.']
+  };
+  var FRASE_REGRESO_LARGO = 'Ha pasado tiempo. Has llegado al lugar indicado.';
+  var FRASE_REINICIO = 'Empecemos de nuevo. Aquí sigo.';
+  var REGRESO_LARGO_MS = 12 * 60 * 60 * 1000; // 12h sin visitar
+
+  function franjaHoraria() {
+    var h = new Date().getHours();
+    if (h < 6) return 'madrugada';
+    if (h < 12) return 'manana';
+    if (h < 19) return 'tarde';
+    return 'noche';
+  }
+
+  // Señales conductuales disponibles sin backend ni clasificación de texto:
+  // tiempo desde la última visita (localStorage) y si este mensaje viene de
+  // un reinicio explícito del usuario (ver resetBtn) o de un arranque
+  // normal. Evita repetir la misma frase dos veces seguidas dentro de la
+  // misma franja/contexto guardando el último índice usado.
+  function elegirFraseBienvenida(contexto) {
+    var ahora = Date.now();
+    var ultimaVisita = null;
+    try { ultimaVisita = parseInt(localStorage.getItem(LS_ULTIMA_VISITA_KEY), 10); } catch (e) { }
+
+    if (contexto === 'reinicio') {
+      try { localStorage.setItem(LS_ULTIMA_VISITA_KEY, String(ahora)); } catch (e) { }
+      return FRASE_REINICIO;
+    }
+
+    var frase;
+    if (ultimaVisita && (ahora - ultimaVisita) >= REGRESO_LARGO_MS) {
+      frase = FRASE_REGRESO_LARGO;
+    } else {
+      var candidatas = FRASES_BIENVENIDA[franjaHoraria()];
+      var ultimaFrase = null;
+      try { ultimaFrase = localStorage.getItem(LS_ULTIMA_FRASE_KEY); } catch (e) { }
+      var disponibles = candidatas.filter(function (f) { return f !== ultimaFrase; });
+      frase = (disponibles.length ? disponibles : candidatas)[0];
+    }
+
+    try {
+      localStorage.setItem(LS_ULTIMA_VISITA_KEY, String(ahora));
+      localStorage.setItem(LS_ULTIMA_FRASE_KEY, frase);
+    } catch (e) { }
+    return frase;
+  }
+
+  // La frase de bienvenida rota sola mientras siga siendo lo único en
+  // pantalla (nadie escribió todavía): sin esto, quedaba fija el tiempo
+  // que el usuario tardara en decidirse a escribir, lo que en una espera
+  // larga se lee como que la interfaz se congeló en esa frase. Se detiene
+  // en cuanto hay un primer mensaje real (detenerRotacionBienvenida() en
+  // enviarMensaje) — después de eso la burbuja es historial de la
+  // conversación, no bienvenida activa, y no debe seguir cambiando sola.
+  var FRASE_ROTACION_MS = 45000;
+  var fraseRotacionTimer = null;
+  var elementoBienvenidaActivo = null;
+
+  function detenerRotacionBienvenida() {
+    clearTimeout(fraseRotacionTimer);
+    elementoBienvenidaActivo = null;
+  }
+
+  // Disolución tipo ceniza en vez de un fundido de opacidad plano: la
+  // frase pierde nitidez y se asienta levemente hacia abajo al irse
+  // (blur + translateY, no solo opacity), y la que la reemplaza entra
+  // desde el mismo estado disuelto hacia nitidez total — coherente con la
+  // imaginería ya establecida (niebla, cirios) en vez de un efecto de UI
+  // genérico.
+  function rotarFraseBienvenida() {
+    var el = elementoBienvenidaActivo;
+    if (!el) return;
+    var nuevaFrase = elegirFraseBienvenida();
+    if (reducedMotion) {
+      el.textContent = nuevaFrase;
+    } else {
+      el.style.transition = 'opacity 0.6s ease-in, filter 0.6s ease-in, transform 0.6s ease-in';
+      el.style.opacity = '0';
+      el.style.filter = 'blur(3px)';
+      el.style.transform = 'translateY(5px)';
+      setTimeout(function () {
+        if (elementoBienvenidaActivo !== el) return; // ya se envió un mensaje o hubo otro reinicio
+        el.textContent = nuevaFrase;
+        el.style.transition = 'none';
+        el.style.filter = 'blur(2px)';
+        el.style.transform = 'translateY(-3px)';
+        void el.offsetHeight; // fuerza reflow: sin esto el navegador fusiona este estado con el siguiente y nunca se ve la entrada
+        el.style.transition = 'opacity 0.5s ease-out, filter 0.5s ease-out, transform 0.5s ease-out';
+        el.style.opacity = '1';
+        el.style.filter = 'blur(0)';
+        el.style.transform = 'translateY(0)';
+      }, 600);
+    }
+    fraseRotacionTimer = setTimeout(rotarFraseBienvenida, FRASE_ROTACION_MS);
+  }
+
+  function iniciarRotacionBienvenida(el) {
+    detenerRotacionBienvenida();
+    elementoBienvenidaActivo = el;
+    fraseRotacionTimer = setTimeout(rotarFraseBienvenida, FRASE_ROTACION_MS);
+  }
+
+  function crearMensajeWelcome(contexto) {
     var el = crearMensajeDeidadVacio();
-    el.querySelector('.text').textContent = 'Te estaba esperando.';
+    var textoEl = el.querySelector('.text');
+    textoEl.textContent = elegirFraseBienvenida(contexto);
     el.querySelector('.msg-time').style.display = 'none';
+    iniciarRotacionBienvenida(textoEl);
   }
 
   function mostrarErrorInline(mensaje) {
@@ -1257,6 +1454,7 @@
   }
 
   function enviarMensaje(texto) {
+    detenerRotacionBienvenida();
     agregarMensajeUsuario(texto);
     input.disabled = true;
     sendBtn.hidden = true;
@@ -1391,7 +1589,7 @@
     apiRequest('POST', '/api/v1/sesiones/' + encodeURIComponent(sessionId) + '/reiniciar', undefined, true)
       .then(function () {
         messagesEl.innerHTML = '';
-        crearMensajeWelcome();
+        crearMensajeWelcome('reinicio');
       })
       .catch(function (err) {
         console.error('No se pudo reiniciar la sesión:', err);

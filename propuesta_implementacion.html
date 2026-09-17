@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Propuesta de Implementación - Eliminación de 4 Limitaciones</title>
+    <style>
+        body { font-family: monospace; margin: 20px; line-height: 1.6; }
+        .section { margin: 30px 0; padding: 20px; border-left: 4px solid #ccc; }
+        .code { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .added { color: #008000; }
+        .changed { color: #9c6a00; }
+        .comment { color: #666; }
+        h2 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .highlight { background: #fffacd; padding: 2px 4px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 PROPUESTA DE IMPLEMENTACIÓN CONCRETA</h1>
+    <h2>Eliminación de las 4 Limitaciones Identificadas</h2>
+    
+    <div class="section">
+        <h3>📋 CONTEXTO ACTUAL</h3>
+        <p>Sistema tiene arquitectura preparada pero valores fijos debido a:</p>
+        <ul>
+            <li>ADR-0005: Prohíbe diferenciación emocional sin protocolo de crisis</li>
+            <li>Falta de protocolo de crisis aprobado</li>
+            <li>Decisión de producto de uniformidad visual</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h3>🎯 OBJETIVO DE LA IMPLEMENTACIÓN</h3>
+        <p>Modificar el código para eliminar las 4 limitaciones manteniendo:</p>
+        <ul>
+            <li>Cumplimiento de gobernanza de riesgo</li>
+            <li>Experiencia de usuario consistente</li>
+            <li>Arquitectura modular existente</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h3>1️⃣ CAMBIO CRÍTICO: Función <span class="highlight">mapeoEmotionIntensidad()</span></h3>
+        
+        <h4>CÓDIGO ACTUAL (limitación):</h4>
+        <div class="code">
+// función actual - todas las emociones iguales<br>
+function mapeoEmotionIntensidad(emocion) {<br>
+&nbsp;&nbsp;return { alfa: 0.72, scale: 1.15, duracion: 600, transicion: 500 };<br>
+}<br>
+        </div>
