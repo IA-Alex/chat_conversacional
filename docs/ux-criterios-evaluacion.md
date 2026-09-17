@@ -261,4 +261,52 @@ los tokens de contraste y medida.
 2. Verifica la **lógica**, no la accesibilidad ni el aspecto visual. Ambas
    siguen pendientes hasta que el cliente real exista.
 
+## Patrones de Implementación Disponibles
+
+### Patrón de Modales Accesibles
+El proyecto ha implementado un servicio centralizado de gestión de modales con cumplimiento WCAG 2.1 AA:
+
+- **Servicio**: `frontend/modal-service.js`
+- **Documentación**: [`patron-modales-accesibles.md`](patron-modales-accesibles.md)
+- **Verificación**: Incluida en `scripts/verificar_correcciones_ux.py`
+- **CI/CD**: Job `accessibility` en `/.github/workflows/ci.yml`
+
+El patrón proporciona:
+- Gestión centralizada de stack de diálogos
+- Focus trap automático (WCAG 2.1.1, 2.4.3)
+- Manejo de tecla Escape
+- Atributos ARIA automáticos
+- Z-index incremental automático
+- Compatibilidad con lectores de pantalla
+
+### Responsividad Móvil
+El cliente ya incluye media queries para viewports móviles (<768px):
+- Layout de una columna (flex-direction: column)
+- Panel de imagen a 38vh de altura
+- Ajustes de padding y márgenes
+- Preservación de contraste y legibilidad
+
+### Verificación de Regresión
+Las mejoras de accesibilidad se verifican automáticamente en cada PR/push mediante:
+1. Tests estáticos de atributos ARIA y estructura HTML
+2. Validación de uso correcto del servicio de modales
+3. Verificación de eliminación de patrones antiguos (ej. `crearFocusTrap`)
+
+### Limitación Voluntaria de Auditorías Avanzadas
+Por decisión arquitectónica documentada en [ADR-0006](../adr/0006-limitacion-voluntaria-auditorias-accesibilidad.md), el proyecto **no integra**:
+
+1. **axe-core** para auditorías exhaustivas
+2. **Pruebas con lectores de pantalla** (NVDA/JAWS/VoiceOver)
+3. **Monitoreo de métricas de accesibilidad** en producción
+
+**Justificación**: Costo desproporcionado para un frontend mínimo (2 archivos) con usuarios limitados.
+
+**Criterios de reactivación** (documentados en ADR-0006):
+- Frontend supera 5 páginas/componentes distintos
+- Usuarios con discapacidades acceden regularmente
+- Requisitos contractuales exigen auditorías formales
+- Equipo frontend se expande con especialistas en accesibilidad
+
+**Alternativa práctica**: Ampliación gradual de `verificar_correcciones_ux.py` con más verificaciones estáticas sin dependencias externas.
+
 

@@ -207,7 +207,7 @@
 
   /* --- Umbral: pantalla previa al chat (privacidad / errores de arranque) --- */
   .threshold-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-    overflow-y: auto; background: rgba(8,7,11,0.92); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
+    overflow-y: auto; background: rgba(8,7,11,0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
   /* En viewports de poca altura (móvil en horizontal, ventana embebida baja)
      el contenido del umbral (consentimiento / error de arranque) puede
      medir más que la ventana. Sin esto, `align-items: center` recorta lo
@@ -217,6 +217,10 @@
      http_api.py) puede quedar fuera de pantalla sin forma de alcanzarlo. */
   .threshold-overlay > * { margin-block: auto; }
   .threshold-overlay[hidden] { display: none; }
+  /* Arte de fondo de bienvenida (integrado de propuesta_bienvenida.html) */
+  .welcome-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: -1;
+    animation: welcomeFadeIn 1.2s ease-out; }
+  @keyframes welcomeFadeIn { from { opacity: 0; } to { opacity: 1; } }
   .threshold-box { max-width: 560px; width: 100%; padding: 44px 40px; border: 1px solid rgba(184,150,95,0.28);
     background: rgba(13,11,17,0.7); }
   .threshold-box h1 { font-family: 'Crimson Pro', serif; font-weight: 500; font-style: italic; font-size: 24px;
@@ -413,9 +417,16 @@
 
 </div>
 
-<div id="consent-overlay" class="threshold-overlay" hidden>
+<div id="consent-overlay" class="threshold-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="consent-title" tabindex="-1">
+  <!-- Arte ambiental SVG (integrado de propuesta_bienvenida.html) -->
+  <svg class="welcome-bg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect width="1200" height="800" fill="#10131c"/>
+    <ellipse cx="500" cy="150" rx="260" ry="90" fill="#3a4258" opacity="0.5"/>
+    <ellipse cx="800" cy="220" rx="200" ry="70" fill="#262c3d" opacity="0.6"/>
+    <line x1="900" y1="80" x2="880" y2="180" stroke="#eef2ff" stroke-width="4" opacity="0.7"/>
+  </svg>
   <div class="container">
-    <div class="title">Antes de cruzar el umbral<br><small style="font-size: 18px; font-weight: normal;">Acepta la bienvenida</small></div>
+    <div class="title" id="consent-title">Antes de cruzar el umbral<br><small style="font-size: 18px; font-weight: normal;">Acepta la bienvenida</small></div>
 
     <div class="divider"></div>
 
@@ -439,9 +450,9 @@
   </div>
 </div>
 
-<div id="boot-error-overlay" class="threshold-overlay" hidden>
+<div id="boot-error-overlay" class="threshold-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="boot-error-title" aria-describedby="boot-error-message">
   <div class="threshold-box">
-    <h1>Algo interrumpió el paso</h1>
+    <h1 id="boot-error-title">Algo interrumpió el paso</h1>
     <p id="boot-error-message" role="alert" aria-live="assertive"></p>
     <div class="threshold-actions">
       <button class="threshold-btn" id="boot-error-retry-btn">Reintentar</button>
@@ -458,6 +469,9 @@
     document.getElementById('test-fog-btn').addEventListener('click', triggerIntensify);
   </script>
 -->
+
+<!-- Servicio centralizado de modales accesibles -->
+<script src="modal-service.js"></script>
 
 <script>
   // ─────────────────────────────────────────────────────────────────────
@@ -759,6 +773,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
   // Aviso de privacidad y consentimiento explícito
   // ─────────────────────────────────────────────────────────────────────
   function mostrarPantallaConsentimiento(privacidad) {
@@ -771,15 +786,25 @@
       if (infoEl && privacidad && privacidad.resumen) {
         infoEl.innerHTML = '<strong>Tu información es privada.</strong> ' + escaparHtml(privacidad.resumen);
       }
-      consentOverlay.hidden = false;
+
+      // Variable para almacenar la función de cierre del modal
+      var closeModal;
+
+      // Función para cerrar el diálogo y resolver la promesa
+      function cerrarDialogo() {
+        if (closeModal) {
+          closeModal();
+          closeModal = null;
+        }
+        resolve();
+      }
 
       function enviarConsentimiento(reintentoPorTokenInvalido) {
         return apiRequest(
           'POST', '/api/v1/dispositivos/consentimiento', { version: privacidad.version }, true
         ).then(function () {
           try { localStorage.setItem(LS_CONSENT_VERSION_KEY, privacidad.version); } catch (e) { }
-          consentOverlay.hidden = true;
-          resolve();
+          cerrarDialogo();
         }).catch(function (err) {
           // 401: el device_token guardado ya no es válido (p. ej. el
           // servidor rotó el secreto de sesión desde que se emitió) — no es
@@ -809,8 +834,23 @@
               ? 'No se pudo registrar tu consentimiento (' + err.status + '). Intenta de nuevo.'
               : 'No se pudo registrar tu consentimiento. Verifica tu conexión e inténtalo de nuevo.';
             consentErrorEl.hidden = false;
+            // Re-enfocar el botón después de un error para mantener el foco dentro del diálogo
+            setTimeout(function () { consentAcceptBtn.focus(); }, 0);
           });
       };
+
+      // Usar ModalService para mostrar el overlay con gestión centralizada
+      // El overlay ya tiene los atributos ARIA necesarios en el HTML
+      closeModal = window.ModalService.show(consentOverlay, {
+        ariaLabelledby: 'consent-title',
+        onClose: function() {
+          // El usuario cerró con Escape - no hacemos nada especial
+          // pero necesitamos resolver la promesa para continuar
+          resolve();
+        },
+        trapFocus: true,
+        closeOnEscape: true
+      });
     });
   }
 
@@ -828,11 +868,30 @@
   // ─────────────────────────────────────────────────────────────────────
   function mostrarErrorArranque(mensaje, reintentar) {
     bootErrorMessage.textContent = mensaje;
-    bootErrorOverlay.hidden = false;
+    
+    // Variable para almacenar la función de cierre del modal
+    var closeModal;
+
+    // Configurar el handler del botón de reintento
     bootErrorRetryBtn.onclick = function () {
-      bootErrorOverlay.hidden = true;
+      if (closeModal) {
+        closeModal();
+        closeModal = null;
+      }
       reintentar();
     };
+
+    // Usar ModalService para mostrar el overlay
+    closeModal = window.ModalService.show(bootErrorOverlay, {
+      ariaLabelledby: 'boot-error-title',
+      ariaDescribedby: 'boot-error-message',
+      trapFocus: true,
+      closeOnEscape: true,
+      onClose: function() {
+        // Si el usuario cierra con Escape, también intentamos reintentar
+        reintentar();
+      }
+    });
   }
 
   // Un fallo de red (backend caído) y un fallo de CORS llegan aquí igual:

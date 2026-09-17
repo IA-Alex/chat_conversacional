@@ -225,6 +225,66 @@ else { console.log("MISMATCH got=" + JSON.stringify(chunkFinal)); process.exit(1
     ultima_linea = [l for l in r.stdout.strip().splitlines() if l.strip()][-1] if r.stdout.strip() else r.stderr.strip()
     check("pytest-http_api", "COMPORTAMIENTO", r.returncode == 0, ultima_linea)
 
+    # --- Verificaciones de accesibilidad y patrón de modales -----------------
+    # Verificar que existe el servicio de modales
+    modal_service_path = RAIZ / "frontend" / "modal-service.js"
+    check(
+        "ACC-MODAL-SERVICE", "ESTATICA",
+        modal_service_path.exists(),
+        "El servicio de modales debe existir en frontend/modal-service.js"
+    )
+    
+    if modal_service_path.exists():
+        modal_service_content = modal_service_path.read_text(encoding="utf-8")
+        check(
+            "ACC-MODAL-SERVICE-API", "ESTATICA",
+            "ModalService.show" in modal_service_content,
+            "ModalService debe tener método show"
+        )
+        check(
+            "ACC-MODAL-STACK", "ESTATICA",
+            "modalStack" in modal_service_content,
+            "ModalService debe gestionar stack de modales"
+        )
+        check(
+            "ACC-FOCUS-TRAP", "ESTATICA",
+            "FOCUSABLE_SELECTOR" in modal_service_content or "focusable" in modal_service_content,
+            "ModalService debe implementar focus trap"
+        )
+    
+    # Verificar que los overlays usen atributos ARIA apropiados
+    check(
+        "ACC-CONSENT-ARIA", "ESTATICA",
+        "role=\"dialog\"" in html and "aria-modal=\"true\"" in html and "aria-labelledby=\"consent-title\"" in html,
+        "consent-overlay debe tener role=\"dialog\", aria-modal=\"true\", aria-labelledby"
+    )
+    
+    check(
+        "ACC-ERROR-ARIA", "ESTATICA",
+        "id=\"boot-error-title\"" in html and "aria-labelledby=\"boot-error-title\"" in html,
+        "boot-error-overlay debe tener aria-labelledby apuntando al título"
+    )
+    
+    # Verificar que se use ModalService en lugar de crearFocusTrap
+    check(
+        "ACC-USE-MODALSERVICE-CONSENT", "ESTATICA",
+        "window.ModalService.show(consentOverlay" in html,
+        "mostrarPantallaConsentimiento debe usar ModalService.show"
+    )
+    
+    check(
+        "ACC-USE-MODALSERVICE-ERROR", "ESTATICA",
+        "window.ModalService.show(bootErrorOverlay" in html,
+        "mostrarErrorArranque debe usar ModalService.show"
+    )
+    
+    # Verificar que ya no existe crearFocusTrap
+    check(
+        "ACC-NO-CREARFOCUSTRAP", "ESTATICA",
+        "function crearFocusTrap" not in html,
+        "crearFocusTrap debe haberse eliminado al usar ModalService"
+    )
+    
     # --- Reporte ---------------------------------------------------------
     ancho_id = max(len(r[0]) for r in resultados)
     pass_ = fail_ = 0

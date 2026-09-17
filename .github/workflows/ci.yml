@@ -142,3 +142,17 @@ jobs:
             promtool check config /monitoring/prometheus.yml
           docker run --rm -v "$PWD/monitoring:/monitoring" prom/prometheus:latest \
             promtool check rules /monitoring/prometheus_rules.yml
+
+  accessibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Ejecutar verificaciones de accesibilidad UX
+        run: |
+          python scripts/verificar_correcciones_ux.py

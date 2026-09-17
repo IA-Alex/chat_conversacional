@@ -16,3 +16,4 @@ ADR nuevo que la reemplaza y enlaza al anterior.
 | [0003](0003-migracion-deepinfra.md) | Migración de proveedor de IA: OpenAI → DeepInfra | Aceptado |
 | [0004](0004-consentimiento-explicito-por-version.md) | Consentimiento explícito versionado antes del primer mensaje | Aceptado |
 | [0005](0005-personificacion-sin-aviso-de-ia-en-el-flujo.md) | Personificación en primera persona sin aviso de IA dentro del flujo conversacional | Aceptado, con riesgo diferido registrado |
+| [0006](0006-limitacion-voluntaria-auditorias-accesibilidad.md) | Limitación voluntaria de auditorías de accesibilidad avanzadas | Aceptado |
